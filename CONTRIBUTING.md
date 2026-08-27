@@ -54,17 +54,16 @@ npm run build         # full build should succeed
 ## Development Workflow
 
 ```
-main          ← Release Please prepares versioned release PRs
-develop       ← integration branch; all PRs target here
-feature/xxx   ← your working branch
-fix/xxx       ← bug fix branches
+main          ← default branch and release source
+feature/xxx   ← feature branches created from main
+fix/xxx       ← bug fix branches created from main
 ```
 
-1. Fork the repository and create your branch from `develop`.
+1. Fork the repository and create your branch from `main`.
 2. Make your changes — keep PRs focused on a single concern.
 3. Add or update tests to cover your change.
 4. Run `npm run typecheck`, `npm run lint`, and `npm test` — all must pass locally.
-5. Open a Pull Request targeting `develop`.
+5. Open a Pull Request targeting `main`.
 
 ## Commit Convention
 
@@ -104,7 +103,7 @@ Use this convention for commits and pull request titles.
    - [ ] New/changed behaviour is documented
    - [ ] No unrelated files changed
 
-PRs are merged by squash-and-merge to keep a clean history on `develop`.
+PRs are merged by squash-and-merge to keep a clean history on `main`.
 
 ## Project Structure
 
@@ -195,5 +194,5 @@ npm publish --workspace=packages/cli --otp=<code>
 
 ## Questions?
 
-Open a [GitHub Discussion](https://github.com/prisma-flow/prisma-flow/discussions)
-— we're happy to help.
+Open a support request through the
+[GitHub issue chooser](https://github.com/prisma-flow/prisma-flow/issues/new/choose).

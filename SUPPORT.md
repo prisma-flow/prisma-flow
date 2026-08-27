@@ -4,9 +4,9 @@ Use the right channel so maintainers can respond quickly.
 
 ## Questions
 
-Use GitHub Discussions for setup help, usage questions, and workflow ideas:
+Open a question through the GitHub issue chooser for setup help, usage questions, and workflow ideas:
 
-https://github.com/prisma-flow/prisma-flow/discussions
+https://github.com/prisma-flow/prisma-flow/issues/new/choose
 
 ## Bugs
 
