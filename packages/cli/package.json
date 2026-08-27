@@ -1,6 +1,6 @@
 {
   "name": "prisma-flow",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Local-first Prisma migration visibility, drift detection, risk analysis, and deployment readiness",
   "license": "MIT",
   "type": "module",
@@ -13,8 +13,21 @@
   "bugs": {
     "url": "https://github.com/prisma-flow/prisma-flow/issues"
   },
-  "keywords": ["prisma", "migrations", "database", "schema-drift", "cli", "dashboard", "devtools"],
-  "files": ["dist", "public", "README.md", "LICENSE"],
+  "keywords": [
+    "prisma",
+    "migrations",
+    "database",
+    "schema-drift",
+    "cli",
+    "dashboard",
+    "devtools"
+  ],
+  "files": [
+    "dist",
+    "public",
+    "README.md",
+    "LICENSE"
+  ],
   "publishConfig": {
     "access": "public"
   },

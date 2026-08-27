@@ -1,13 +1,16 @@
 {
   "name": "prisma-flow-root",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "license": "MIT",
   "packageManager": "npm@11.8.0",
   "engines": {
     "node": ">=20"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "build": "turbo run build",
     "build:cli": "turbo run build --filter=prisma-flow",
@@ -38,7 +41,11 @@
     "lint-staged": "^15.0.0"
   },
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": ["biome check --write"],
-    "*.{json,md,yaml,yml}": ["prettier --write"]
+    "*.{ts,tsx,js,jsx}": [
+      "biome check --write"
+    ],
+    "*.{json,md,yaml,yml}": [
+      "prettier --write"
+    ]
   }
 }
