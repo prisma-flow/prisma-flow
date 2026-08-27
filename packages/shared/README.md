@@ -20,4 +20,4 @@ The public exports are generated from `src/index.ts` and include Zod schemas,
 domain types, and typed errors shared across PrismaFlow packages.
 
 Full documentation is available in the main repository:
-https://github.com/GitHackerz/prisma-flow
+https://github.com/prisma-flow/prisma-flow
