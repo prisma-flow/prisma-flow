@@ -1,6 +1,6 @@
 {
   "name": "prisma-flow",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Local-first Prisma migration visibility, drift detection, risk analysis, and deployment readiness",
   "license": "MIT",
   "type": "module",
