@@ -4,6 +4,7 @@ import path from 'node:path'
 import { promisify } from 'node:util'
 import chalk from 'chalk'
 import { Command } from 'commander'
+import { getPrismaAdapter } from '../core/adapters/index.js'
 import { writeAuditEntry } from '../core/audit.js'
 import { execPrisma } from '../core/prisma-cli.js'
 import { detectPrismaProject } from '../core/prisma-detector.js'
@@ -185,32 +186,25 @@ export function doctorCommand() {
         merge(
           await runChecks([
             {
-              label: 'database reachable',
+              label: 'database reachable and verified',
               run: async () => {
-                try {
-                  await execPrisma(cwd, ['migrate', 'status', '--schema', project.schemaPath], {
-                    timeout: 20_000,
-                  })
-                  return { ok: true, detail: 'all migrations applied' }
-                } catch (err: unknown) {
-                  const error = err as { stderr?: string; stdout?: string }
-                  const stderr = error.stderr ?? ''
-                  const stdout = error.stdout ?? ''
-                  if (
-                    stderr.includes('P1001') ||
-                    stderr.includes("Can't reach database server") ||
-                    stderr.includes('Connection refused')
-                  ) {
-                    return {
-                      ok: false,
-                      detail: 'database unreachable (P1001)',
-                    }
-                  }
-                  const pending = stdout.match(/have not yet been applied/i)
+                const adapter = getPrismaAdapter(project.prismaVersion)
+                const res = await adapter.getMigrationStatus(cwd, project.schemaPath)
+                if (res.connected && res.verification === 'verified') {
+                  const pending = Array.from(res.statusMap.values()).filter(
+                    (s) => s === 'pending',
+                  ).length
                   return {
                     ok: true,
-                    detail: pending ? 'connected — pending migrations exist' : 'connected',
+                    detail:
+                      pending > 0
+                        ? `connected — ${pending} pending migration(s)`
+                        : 'connected and verified',
                   }
+                }
+                return {
+                  ok: false,
+                  detail: res.errorMessage || `unverified (${res.errorCode ?? 'unknown'})`,
                 }
               },
             },

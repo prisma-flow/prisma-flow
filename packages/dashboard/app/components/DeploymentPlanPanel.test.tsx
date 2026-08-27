@@ -30,6 +30,8 @@ const basePlan: DeploymentPlan = {
     applied: 1,
     pending: 0,
     failed: 0,
+    unknown: 0,
+    verification: 'verified',
     pendingNames: [],
     failedNames: [],
   },

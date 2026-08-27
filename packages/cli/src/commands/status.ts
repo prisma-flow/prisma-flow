@@ -7,7 +7,7 @@ import { trackEvent } from '../core/telemetry.js'
 
 export function statusCommand() {
   return new Command('status')
-    .description('Show current migration and database status')
+    .description('Show current migration, drift, and database verification status')
     .option('--json', 'Output as JSON')
     .option('--quiet', 'Suppress decorative output')
     .action(async (options: { json?: boolean; quiet?: boolean }) => {
@@ -55,6 +55,12 @@ export function statusCommand() {
             status.connected ? chalk.green('✔ Connected') : chalk.red('✖ Disconnected'),
           )
           console.log(
+            chalk.bold(' Verification: '),
+            status.migrationVerification === 'verified'
+              ? chalk.green('✔ Verified')
+              : chalk.red(`✖ ${status.migrationVerification}`),
+          )
+          console.log(
             chalk.bold(' Migrations:   ') +
               chalk.green(`${status.migrationsApplied} applied`) +
               chalk.dim('  /  ') +
@@ -64,7 +70,10 @@ export function statusCommand() {
               chalk.dim('  /  ') +
               (status.migrationsFailed > 0
                 ? chalk.red(`${status.migrationsFailed} failed`)
-                : chalk.dim('0 failed')),
+                : chalk.dim('0 failed')) +
+              (status.migrationsUnknown > 0
+                ? chalk.dim('  /  ') + chalk.red(`${status.migrationsUnknown} unknown`)
+                : ''),
           )
           console.log(
             chalk.bold(' Drift:        '),
@@ -72,10 +81,14 @@ export function statusCommand() {
               ? chalk.red(
                   `✖ ${status.driftCount} issue${status.driftCount !== 1 ? 's' : ''} detected`,
                 )
-              : chalk.green('✔ None'),
+              : status.driftStatus === 'not_checked'
+                ? chalk.yellow('⚠ Not checked')
+                : chalk.green('✔ None'),
           )
           console.log(
-            chalk.bold(' Risk Level:   ') + riskColor(chalk.bold(status.riskLevel.toUpperCase())),
+            chalk.bold(' Risk Level:   ') +
+              riskColor(chalk.bold(status.riskLevel.toUpperCase())) +
+              chalk.dim(' (heuristic)'),
           )
           console.log(
             chalk.bold(' Health Score: ') +
@@ -83,7 +96,7 @@ export function statusCommand() {
               chalk.dim(` (${status.deploymentReadiness.summary})`),
           )
 
-          // Show last migration
+          // Show last applied migration
           const lastMigration = migrations.filter((m) => m.status === 'applied').pop()
           if (lastMigration) {
             const date = new Date(lastMigration.timestamp).toLocaleDateString(undefined, {
@@ -101,6 +114,16 @@ export function statusCommand() {
           )
           console.log(bar)
 
+          if (!status.connected) {
+            console.log(chalk.red(' ✖  Database unreachable — check DATABASE_URL in .env'))
+          }
+          if (status.migrationVerification !== 'verified') {
+            console.log(
+              chalk.red(
+                ` ✖  Migration verification: ${status.migrationVerification} — run prisma-flow doctor`,
+              ),
+            )
+          }
           if (status.migrationsPending > 0) {
             console.log(chalk.yellow(' ⚠  Pending migrations — run: prisma migrate deploy'))
           }

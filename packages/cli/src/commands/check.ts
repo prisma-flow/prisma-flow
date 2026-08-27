@@ -7,21 +7,21 @@ import { trackEvent } from '../core/telemetry.js'
 
 /**
  * Exit codes (documented in README):
- *   0 – All good
+ *   0 – All checks verified and ready
  *   1 – Pending migrations
  *   2 – Schema drift detected
  *   3 – Failed migrations
- *   4 – Runtime error
- *   5 – Risk threshold exceeded (when --fail-on-risk is used)
+ *   4 – Runtime error, unreachable database, or unverified migration state
+ *   5 – Heuristic risk threshold exceeded (when --fail-on-risk is used)
  */
 export function checkCommand() {
   return new Command('check')
-    .description('Validate database migration state (CI-friendly)')
-    .option('--ci', 'Exit with a non-zero code when issues are found (for CI pipelines)')
+    .description('Validate database migration state and deployment readiness (CI-friendly)')
+    .option('--ci', 'Exit with a non-zero code when issues or unverified states are found')
     .option('--json', 'Output result as JSON to stdout')
     .option(
       '--fail-on-risk <level>',
-      'Exit code 5 when risk meets or exceeds this level (low|medium|high|critical)',
+      'Exit code 5 when estimated risk meets or exceeds this level (low|medium|high|critical)',
     )
     .option('--quiet', 'Suppress non-essential output')
     .action(
@@ -53,16 +53,23 @@ export function checkCommand() {
             getMigrations(cwd),
           ])
 
+          const isVerified = status.migrationVerification === 'verified' && status.connected
           const ok =
-            status.migrationsFailed === 0 && !status.driftDetected && status.migrationsPending === 0
+            isVerified &&
+            status.migrationsFailed === 0 &&
+            !status.driftDetected &&
+            status.migrationsPending === 0
 
           const result = {
             ok,
             connected: status.connected,
+            migrationVerification: status.migrationVerification,
             pendingCount: status.migrationsPending,
             failedCount: status.migrationsFailed,
+            unknownCount: status.migrationsUnknown,
             driftDetected: status.driftDetected,
             driftCount: status.driftCount,
+            driftStatus: status.driftStatus,
             riskLevel: status.riskLevel,
             healthScore: status.healthScore,
             deploymentReadiness: status.deploymentReadiness,
@@ -87,6 +94,16 @@ export function checkCommand() {
               )
             } else {
               console.log(chalk.red(' ✖  Database unreachable — check DATABASE_URL'))
+            }
+
+            // Verification status
+            if (status.migrationVerification === 'verified') {
+              console.log(chalk.green(' ✔  Migration verification: verified'))
+            } else {
+              console.log(
+                chalk.red(` ✖  Migration verification: ${status.migrationVerification}`) +
+                  chalk.dim(' (cannot prove database safety)'),
+              )
             }
 
             // Applied migrations
@@ -135,11 +152,15 @@ export function checkCommand() {
                   ),
               )
               console.log(chalk.dim('     Review the dashboard Drift page before deploying'))
+            } else if (status.driftStatus === 'not_checked') {
+              console.log(
+                chalk.yellow(' ⚠  Schema drift: not checked (pending work or disconnected)'),
+              )
             } else {
               console.log(chalk.green(' ✔  No schema drift detected'))
             }
 
-            // Risk level
+            // Heuristic Risk level
             const riskColors: Record<string, (text: string) => string> = {
               low: chalk.green,
               medium: chalk.yellow,
@@ -147,7 +168,9 @@ export function checkCommand() {
               critical: chalk.red,
             }
             const riskColor = riskColors[status.riskLevel] ?? chalk.white
-            console.log(` 🔒  Risk level: ${riskColor(chalk.bold(status.riskLevel.toUpperCase()))}`)
+            console.log(
+              ` 🔒  Estimated risk: ${riskColor(chalk.bold(status.riskLevel.toUpperCase()))}`,
+            )
             console.log(
               ` 🚦  Readiness: ${riskColor(chalk.bold(`${status.healthScore}/100`))}${chalk.dim(
                 ` — ${status.deploymentReadiness.summary}`,
@@ -160,7 +183,7 @@ export function checkCommand() {
               .sort((a, b) => b.riskScore.score - a.riskScore.score)[0]
 
             if (highestRiskMigration?.riskScore.factors.length) {
-              console.log(chalk.dim(`\n     Top risk in ${highestRiskMigration.name}:`))
+              console.log(chalk.dim(`\n     Top heuristic risk in ${highestRiskMigration.name}:`))
               for (const factor of highestRiskMigration.riskScore.factors.slice(0, 2)) {
                 console.log(chalk.dim(`       • ${factor.description}`))
               }
@@ -170,9 +193,15 @@ export function checkCommand() {
 
             // Overall status
             if (ok) {
-              console.log(chalk.bold.green(' ✔  All checks passed'))
+              console.log(chalk.bold.green(' ✔  All checks passed and verified'))
             } else {
               console.log(chalk.bold.red(' ✖  Issues detected — review above'))
+              if (!status.connected) {
+                console.log(chalk.dim('     → Fix: Check database connection and DATABASE_URL'))
+              }
+              if (status.migrationVerification !== 'verified') {
+                console.log(chalk.dim('     → Fix: Run prisma-flow doctor to diagnose Prisma CLI'))
+              }
               if (status.migrationsFailed > 0) {
                 console.log(chalk.dim('     → Fix: Run prisma migrate resolve'))
               }
@@ -197,9 +226,7 @@ export function checkCommand() {
               riskLevel: status.riskLevel,
             }),
             trackEvent('check', migrations.length),
-          ]).catch(() => {
-            /* background tasks — never fail the command */
-          })
+          ]).catch(() => {})
 
           // ── Exit codes ────────────────────────────────────────────────────
           if (options.failOnRisk) {
@@ -215,6 +242,7 @@ export function checkCommand() {
           }
 
           if (options.ci) {
+            if (!status.connected || status.migrationVerification !== 'verified') process.exit(4)
             if (status.migrationsFailed > 0) process.exit(3)
             if (status.driftDetected) process.exit(2)
             if (status.migrationsPending > 0) process.exit(1)
