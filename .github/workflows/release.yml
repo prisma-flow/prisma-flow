@@ -225,6 +225,7 @@ jobs:
         run: |
           VERSION="${{ steps.release-context.outputs.release_version }}"
           MODE="${{ steps.release-context.outputs.mode }}"
+          PUBLISHED_IN_RUN="${{ steps.npm-publish.outputs.published }}"
 
           if [ "$MODE" != "automated" ]; then
             echo "Execution mode is '$MODE'. PR label reconciliation applies only to automated PR releases. Skipping."
@@ -239,8 +240,31 @@ jobs:
             exit 1
           fi
 
-          if ! npm view "prisma-flow@$VERSION" version >/dev/null 2>&1; then
-            echo "::error::prisma-flow@$VERSION is not published on npm. Cannot finalize PR label state."
+          if [ "$PUBLISHED_IN_RUN" = "true" ]; then
+            echo "Package prisma-flow@$VERSION was published in this workflow run. Verifying npm registry visibility with propagation retry..."
+          else
+            echo "Package prisma-flow@$VERSION was already published prior to this workflow run. Verifying npm registry visibility..."
+          fi
+
+          MAX_ATTEMPTS=6
+          SLEEP_SECONDS=5
+          NPM_VERIFIED=false
+
+          for attempt in 1 2 3 4 5 6; do
+            if npm view "prisma-flow@$VERSION" version >/dev/null 2>&1; then
+              echo "npm registry confirms prisma-flow@$VERSION (attempt $attempt/$MAX_ATTEMPTS)."
+              NPM_VERIFIED=true
+              break
+            fi
+
+            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+              echo "npm registry has not propagated prisma-flow@$VERSION yet (attempt $attempt/$MAX_ATTEMPTS). Retrying in ${SLEEP_SECONDS}s..."
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
+
+          if [ "$NPM_VERIFIED" != "true" ]; then
+            echo "::error::npm registry did not expose prisma-flow@$VERSION within the verification window. Cannot finalize PR label state."
             exit 1
           fi
 
@@ -251,8 +275,13 @@ jobs:
 
           echo "All release artifacts for v$VERSION verified. Reconciling labels on PR #$PR_NUMBER..."
 
-          # Ensure autorelease: tagged label exists in repository
-          gh label create "autorelease: tagged" --color "0e8a16" --description "Release has been tagged" --force || true
+          # Ensure autorelease: tagged label exists in repository without overwriting or suppressing errors
+          if ! gh label view "autorelease: tagged" >/dev/null 2>&1; then
+            echo "Creating missing 'autorelease: tagged' label..."
+            gh label create "autorelease: tagged" --color "0e8a16" --description "Release has been tagged"
+          else
+            echo "Label 'autorelease: tagged' exists in repository."
+          fi
 
           CURRENT_LABELS="$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name]')"
           HAS_PENDING="$(echo "$CURRENT_LABELS" | jq 'contains(["autorelease: pending"])')"
