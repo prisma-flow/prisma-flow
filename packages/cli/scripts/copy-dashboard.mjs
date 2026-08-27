@@ -1,10 +1,10 @@
 /**
  * copy-dashboard.mjs
  *
- * Copies the Next.js static export (packages/dashboard/out/) into
+ * Copies the Next.js static export (apps/dashboard/out/) into
  * packages/cli/public/ so that the Hono server can serve the dashboard.
  *
- * Strict by default: Fails with exit code 1 if packages/dashboard/out is missing.
+ * Strict by default: Fails with exit code 1 if apps/dashboard/out is missing.
  * Allows opt-out during isolated dev loops only via --allow-missing or ALLOW_MISSING_DASHBOARD=1.
  */
 
@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const root = resolve(__dirname, '..', '..', '..')
 
-const src = resolve(root, 'packages', 'dashboard', 'out')
+const src = resolve(root, 'apps', 'dashboard', 'out')
 const dest = resolve(root, 'packages', 'cli', 'public')
 
 const allowMissing =
@@ -25,14 +25,14 @@ const allowMissing =
 
 if (!existsSync(src)) {
   if (!allowMissing) {
-    console.error('✖ Error: Dashboard static export (packages/dashboard/out) not found.')
+    console.error('✖ Error: Dashboard static export (apps/dashboard/out) not found.')
     console.error(
-      '  Run "npm run build --workspace=@prisma-flow/dashboard" or "npm run build" before packaging the CLI.',
+      '  Run "npm run build --workspace=dashboard" or "npm run build" before packaging the CLI.',
     )
     process.exit(1)
   }
   console.warn(
-    '⚠ Warning: Dashboard build output (packages/dashboard/out) not found. Skipping asset copy (dev mode).',
+    '⚠ Warning: Dashboard build output (apps/dashboard/out) not found. Skipping asset copy (dev mode).',
   )
   process.exit(0)
 }

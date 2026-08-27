@@ -23,19 +23,19 @@ WORKDIR /build
 
 COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
-COPY packages/dashboard/package*.json ./packages/dashboard/
+COPY apps/dashboard/package*.json ./apps/dashboard/
 COPY turbo.json ./
 
-RUN npm ci --workspace=packages/dashboard --ignore-scripts
+RUN npm ci --workspace=apps/dashboard --ignore-scripts
 
 # Copy shared dist from stage 1
 COPY --from=shared-builder /build/packages/shared/dist ./packages/shared/dist
 COPY --from=shared-builder /build/packages/shared/package.json ./packages/shared/
 
 # Copy and build dashboard
-COPY packages/dashboard ./packages/dashboard
+COPY apps/dashboard ./apps/dashboard
 COPY tsconfig.base.json ./
-RUN npm run build --workspace=packages/dashboard
+RUN npm run build --workspace=apps/dashboard
 
 
 # ─── Stage 3 — Build CLI ─────────────────────────────────────────────────────
@@ -55,15 +55,15 @@ COPY --from=shared-builder /build/packages/shared/dist ./packages/shared/dist
 COPY --from=shared-builder /build/packages/shared/package.json ./packages/shared/
 
 # Copy dashboard out/ so the copy-dashboard script has it
-COPY --from=dashboard-builder /build/packages/dashboard/out ./packages/dashboard/out
+COPY --from=dashboard-builder /build/apps/dashboard/out ./apps/dashboard/out
 
 # Copy CLI source and build
 COPY packages/cli ./packages/cli
 COPY tsconfig.base.json ./
 # Run the full build (copy-dashboard.mjs → tsup)
 RUN npm run build --workspace=packages/cli
-# Pack workspace tarballs for clean runtime installation
-RUN npm pack --workspace=packages/shared && npm pack --workspace=packages/cli
+# Pack workspace tarball for clean runtime installation
+RUN npm pack --workspace=packages/cli
 
 
 # ─── Stage 4 — Minimal production runtime ────────────────────────────────────

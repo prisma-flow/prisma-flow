@@ -74,7 +74,7 @@ jobs:
         run: npm test --workspace=packages/cli -- --reporter=verbose
 
       - name: Run dashboard tests
-        run: npm test --workspace=packages/dashboard -- --reporter=verbose
+        run: npm test --workspace=apps/dashboard -- --reporter=verbose
 
       - name: Package installation smoke test
         run: npm run test:packaging
@@ -108,12 +108,12 @@ jobs:
         run: npm run build --workspace=packages/shared
 
       - name: Build dashboard
-        run: npm run build --workspace=packages/dashboard
+        run: npm run build --workspace=apps/dashboard
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
       - name: Build website
-        run: npm run build --workspace=packages/website
+        run: npm run build --workspace=apps/website
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
