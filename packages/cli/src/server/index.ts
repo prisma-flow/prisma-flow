@@ -39,13 +39,13 @@ export function createServer(projectPath: string): {
 } {
   const app = new Hono<{ Variables: Variables }>()
 
-  // Generate a per-session bearer token so only the browser we open can reach the API.
+  // Generate a per-session bearer token so only the local browser session can reach the API.
   const token = randomBytes(24).toString('hex')
 
   // ── Security headers ────────────────────────────────────────────────────
   app.use('*', secureHeaders())
 
-  // ── CORS — localhost only ────────────────────────────────────────────────
+  // ── CORS — loopback / localhost only ────────────────────────────────────
   app.use(
     '*',
     cors({
@@ -53,7 +53,14 @@ export function createServer(projectPath: string): {
         if (!origin) return null // same-origin (served HTML) — allow
         try {
           const url = new URL(origin)
-          if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') return origin
+          if (
+            url.hostname === 'localhost' ||
+            url.hostname === '127.0.0.1' ||
+            url.hostname === '::1' ||
+            url.hostname === '[::1]'
+          ) {
+            return origin
+          }
         } catch {
           /* invalid origin — deny */
         }
@@ -64,7 +71,7 @@ export function createServer(projectPath: string): {
     }),
   )
 
-  // ── Request ID ───────────────────────────────────────────────────────────
+  // ── Request ID & Sanitized Request Logging ──────────────────────────────
   app.use('*', async (c, next) => {
     c.set('requestId', randomBytes(8).toString('hex'))
     c.res.headers.set('X-Request-Id', c.get('requestId'))
@@ -74,10 +81,12 @@ export function createServer(projectPath: string): {
   app.use('*', async (c, next) => {
     const started = Date.now()
     await next()
+    // Pathname only — NEVER log query params which may contain session tokens
+    const parsedUrl = new URL(c.req.url)
     logger.debug(
       {
         method: c.req.method,
-        path: new URL(c.req.url).pathname,
+        path: parsedUrl.pathname,
         status: c.res.status,
         durationMs: Date.now() - started,
         requestId: c.get('requestId'),
@@ -93,7 +102,7 @@ export function createServer(projectPath: string): {
     const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : queryToken
 
     if (provided !== token) {
-      return c.json({ success: false, error: 'Unauthorized' }, 401)
+      return c.json({ success: false, error: 'Unauthorized — valid auth token required' }, 401)
     }
     return next()
   })
@@ -121,12 +130,11 @@ export function createServer(projectPath: string): {
   app.route('/api/config', configRoutes)
   app.route('/api/events', eventsRoutes)
 
-  // ── Health (no auth required — used by process monitors / Docker) ────────
+  // ── Health (no auth required — used by process monitors) ─────────────────
   app.get('/health', (c) => {
     return c.json({
       status: 'ok',
       service: 'prisma-flow',
-      version: process.env.npm_package_version ?? '0.0.0',
       uptime: process.uptime(),
     })
   })
@@ -150,7 +158,6 @@ export function createServer(projectPath: string): {
   }
 
   if (!publicDir) {
-    // fallback to previous heuristics
     publicDir = path.resolve(__dirname, '../public')
   }
 
@@ -158,7 +165,6 @@ export function createServer(projectPath: string): {
     logger.warn({ publicDir }, 'serveStatic: public directory not found')
   }
 
-  // Use absolute path for static root to avoid relative-path resolution issues
   app.use(
     '/*',
     serveStatic({
@@ -167,7 +173,7 @@ export function createServer(projectPath: string): {
     }),
   )
 
-  // SPA fallback — serve index.html for any unmatched path
+  // SPA fallback — serve index.html for unmatched paths
   app.get('*', async (c) => {
     try {
       const indexPath = path.join(publicDir, 'index.html')
@@ -184,15 +190,32 @@ export function createServer(projectPath: string): {
   return { app, token }
 }
 
+export function isLoopbackAddress(host: string): boolean {
+  const normalized = host.trim().toLowerCase()
+  return (
+    normalized === '127.0.0.1' ||
+    normalized === 'localhost' ||
+    normalized === '::1' ||
+    normalized === '[::1]' ||
+    /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(normalized)
+  )
+}
+
 export function startServer(
   app: Hono<{ Variables: Variables }>,
   port = 5555,
+  hostname = process.env.PRISMAFLOW_HOST || '127.0.0.1',
 ): ReturnType<typeof serve> {
-  const server = serve({ fetch: app.fetch, port }, (info) => {
-    logger.info({ port: info.port }, 'PrismaFlow API running')
+  if (!isLoopbackAddress(hostname)) {
+    const errorMsg = `SecurityError: PrismaFlow V1 strictly rejects non-loopback bindings (${hostname}) for database safety. Only loopback addresses (127.0.0.1, localhost, ::1) are allowed.`
+    logger.error({ hostname }, errorMsg)
+    throw new Error(errorMsg)
+  }
+
+  const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
+    logger.info({ port: info.port, hostname }, 'PrismaFlow API running on loopback')
   })
 
-  // Graceful shutdown
   const shutdown = () => {
     logger.info('Shutting down PrismaFlow server...')
     server.close(() => {

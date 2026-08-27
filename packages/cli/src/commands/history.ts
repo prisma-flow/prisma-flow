@@ -3,6 +3,7 @@
  * risk scores, and timestamps.
  */
 
+import type { GitMigrationInfo } from '@prisma-flow/shared'
 import chalk from 'chalk'
 import { Command } from 'commander'
 import { writeAuditEntry } from '../core/audit.js'
@@ -30,16 +31,7 @@ export function historyCommand() {
         const all = await getMigrations(cwd)
         const migrations = all.slice(-limit).reverse() // most recent first
 
-        const gitInfo: Map<
-          string,
-          {
-            committed: boolean
-            commitHash?: string
-            commitAuthor?: string
-            commitDate?: string
-            commitMessage?: string
-          }
-        > = new Map()
+        const gitInfo: Map<string, GitMigrationInfo> = new Map()
 
         if (options.git) {
           const inRepo = await isGitRepo(cwd)
