@@ -1,198 +1,168 @@
 # Contributing to PrismaFlow
 
-Thank you for considering contributing! This document covers how to get set up,
-what to work on, and how to submit changes.
+Thank you for contributing to PrismaFlow. The project is pre-1.0 and currently maintainer-led, so focused changes with clear tests and rationale are preferred over broad rewrites.
 
-## Table of Contents
+## Before opening an issue or pull request
 
-- [Code of Conduct](#code-of-conduct)
-- [Getting Started](#getting-started)
-- [Development Workflow](#development-workflow)
-- [Commit Convention](#commit-convention)
-- [Pull Request Process](#pull-request-process)
-- [Project Structure](#project-structure)
-- [Testing](#testing)
-- [Releasing](#releasing)
+Use the right collaboration channel:
+
+- **Questions, setup help, and troubleshooting:** use [GitHub Discussions — Q&A](https://github.com/prisma-flow/prisma-flow/discussions/categories/q-a).
+- **Early ideas, design proposals, and project direction:** use [GitHub Discussions — Ideas](https://github.com/prisma-flow/prisma-flow/discussions/categories/ideas).
+- **Reproducible bugs and concrete implementation work:** use [GitHub Issues](https://github.com/prisma-flow/prisma-flow/issues).
+- **Security vulnerabilities:** use [GitHub private vulnerability reporting](https://github.com/prisma-flow/prisma-flow/security/advisories/new), never a public issue or discussion.
+
+Search existing issues and discussions before creating a new thread. Redact database URLs, credentials, private schema details, and migration SQL from public reports.
 
 ## Code of Conduct
 
-Be respectful and constructive. We follow the
-[Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
+Be respectful and constructive. See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md).
 
-## Getting Started
+## Development setup
 
 ### Prerequisites
 
-- Node.js ≥ 20
-- npm ≥ 10
-- A local Postgres instance, SQLite fixture, or Docker for integration testing
+- Node.js 20 or newer
+- npm 10 or newer
+- A Prisma project or fixture for the area you are testing
+- PostgreSQL, SQLite, or Docker when a change requires database integration coverage
 
 ### Setup
 
 ```bash
 git clone https://github.com/prisma-flow/prisma-flow.git
 cd prisma-flow
-npm install           # installs all workspace packages + sets up Husky hooks
+npm install
 ```
 
-Copy the example env file and fill in a test `DATABASE_URL`:
+For checks that need a live database, copy the example environment file and use test-only credentials:
 
 ```bash
 cp .env.example .env
 ```
 
-### Verify everything works
+Never commit real database credentials or private migration data.
 
-```bash
-npm run typecheck     # zero TypeScript errors expected
-npm test              # all tests should pass
-npm run lint          # Biome lint and formatting checks
-npm run security:audit # high-severity production dependency audit
-npm run build         # full build should succeed
+## Development workflow
+
+```text
+main          <- protected default branch and release source
+feature/xxx   <- feature branches created from main
+fix/xxx       <- bug-fix branches created from main
+chore/xxx     <- maintenance/documentation/tooling branches
 ```
 
-## Development Workflow
+1. Fork the repository or create a branch from the latest `main` if you have write access.
+2. Keep the change focused on one concern.
+3. Add or update tests for behavior changes.
+4. Update documentation when public behavior, configuration, commands, or compatibility changes.
+5. Run the relevant local verification commands.
+6. Open a pull request targeting `main`.
+7. Resolve review conversations and keep the branch current if GitHub reports it as behind.
 
-```
-main          ← default branch and release source
-feature/xxx   ← feature branches created from main
-fix/xxx       ← bug fix branches created from main
-```
+Direct pushes to `main` are not part of the normal workflow. The repository ruleset requires pull requests and passing CI checks.
 
-1. Fork the repository and create your branch from `main`.
-2. Make your changes — keep PRs focused on a single concern.
-3. Add or update tests to cover your change.
-4. Run `npm run typecheck`, `npm run lint`, and `npm test` — all must pass locally.
-5. Open a Pull Request targeting `main`.
+## Commit and pull request convention
 
-## Commit Convention
+Use [Conventional Commits](https://www.conventionalcommits.org/) for commits and pull request titles:
 
-We follow [Conventional Commits](https://www.conventionalcommits.org/):
-
-```
+```text
 type(scope): short description
-
-Body (optional) — explain *why*, not just *what*.
-
-Closes #42
 ```
 
-| Type       | When to use                                             |
-| :--------- | :------------------------------------------------------ |
-| `feat`     | New feature                                             |
-| `fix`      | Bug fix                                                 |
-| `docs`     | Documentation only                                      |
-| `refactor` | Code change that neither fixes a bug nor adds a feature |
-| `test`     | Adding or updating tests                                |
-| `chore`    | Tooling, dependencies, CI                               |
-| `perf`     | Performance improvement                                 |
+Common types:
 
-Use this convention for commits and pull request titles.
+| Type | Use for |
+| --- | --- |
+| `feat` | New functionality |
+| `fix` | Bug fixes |
+| `docs` | Documentation-only changes |
+| `refactor` | Internal restructuring without intended behavior changes |
+| `test` | Test additions or corrections |
+| `chore` | Tooling, dependencies, repository maintenance |
+| `perf` | Performance improvements |
 
-## Pull Request Process
+A good pull request explains **why** the change is needed, what changed, how it was verified, and any compatibility or migration impact.
 
-1. **Title** — write a clear, conventional commit-style title.
-2. **Description** — include context, motivation, and a summary of changes.
-3. **Screenshots** — include before/after screenshots for UI changes.
-4. **Checklist** before requesting review:
-   - [ ] `npm run typecheck` passes
-   - [ ] `npm run lint` passes
-   - [ ] `npm test` passes
-   - [ ] `npm run format:check` passes (run `npm run format` to auto-fix)
-   - [ ] `npm run security:audit` passes or any advisory is explained
-   - [ ] New/changed behaviour is documented
-   - [ ] No unrelated files changed
+PRs are squash-merged into `main` after required checks pass.
 
-PRs are merged by squash-and-merge to keep a clean history on `main`.
+## Required verification
 
-## Project Structure
-
-```
-prisma-flow/
-├── packages/
-│   ├── shared/        # @prisma-flow/shared — Zod schemas, types, errors
-│   ├── cli/           # prisma-flow npm package
-│   │   └── src/
-│   │       ├── commands/  # CLI sub-commands
-│   │       ├── core/      # Business logic (drift, migrations, schema)
-│   │       └── server/    # Hono REST API + routes
-│   └── dashboard/     # Next.js 16 static UI
-├── .github/workflows/ # CI and release pipelines
-├── Dockerfile
-├── docker-compose.yml
-├── turbo.json
-└── tsconfig.base.json
-```
-
-## Testing
-
-| Package              | Command                                   | What it runs                    |
-| :------------------- | :---------------------------------------- | :------------------------------ |
-| `packages/cli`       | `npm test --workspace=packages/cli`       | Vitest unit + integration tests |
-| `packages/dashboard` | `npm test --workspace=packages/dashboard` | Vitest + React Testing Library  |
-| All                  | `npm test`                                | All workspaces via Turborepo    |
-
-Tests live alongside source in `src/tests/` (CLI) and `app/components/*.test.tsx`
-(dashboard).
-
-When adding a new core module, add a corresponding `*.test.ts` file.
-When adding a new API route, add integration coverage in `server.test.ts`.
-
-## Releasing
-
-Releases are automated with Release Please. Conventional Commits pushed to
-`main` update a single bot-authored release PR. That PR keeps the CLI and shared
-package versions synchronized, updates their workspace dependency and lockfile,
-then runs Biome formatting and lint checks before it is ready for review.
-
-Merging the generated release PR runs `.github/workflows/release.yml`, which
-reruns the production gate, publishes any missing package versions to npm, and
-creates the matching GitHub release and tag. Ordinary pushes to `main` never
-publish npm packages.
-
-Before the first public release:
-
-1. Create or claim the `@prisma-flow` npm organization.
-2. Add an npm automation token as the GitHub Actions secret `NPM_TOKEN`.
-3. Confirm private vulnerability reporting is enabled in GitHub repository
-   settings.
-4. Confirm both package names are available:
+Run the checks relevant to your change. Before requesting review for a normal code change, the expected baseline is:
 
 ```bash
-npm view prisma-flow version
-npm view @prisma-flow/shared version
+npm run typecheck
+npm run lint
+npm run format:check
+npm test
+npm run security:audit
+npm run build
 ```
 
-Before every release PR is merged:
+For release-sensitive changes, also run:
 
 ```bash
 npm run verify:release
 ```
 
-Use Conventional Commits to choose the automatic bump: `fix:` produces a patch,
-`feat:` produces a minor release, and `feat!:` or `BREAKING CHANGE:` produces a
-major release. Review and merge the Release Please PR when ready. The repository
-must have an npm automation token with publish access stored as the `NPM_TOKEN`
-GitHub Actions secret.
+The protected `main` branch currently requires the repository CI matrix, unit/integration tests, and CodeQL analysis to pass before merge.
 
-After CI publishes, test from a fresh Prisma project:
+## Testing expectations
 
-```bash
-npx prisma-flow@latest --help
-npx prisma-flow@latest doctor
-```
+CLI tests live with the CLI package and dashboard tests live with the dashboard package.
 
-For a one-time manual first publish, do not pass `--provenance` from a local
-terminal. npm provenance is generated from supported CI/OIDC providers, not from
-ordinary local shells. If npm requires two-factor authentication, pass a current
-OTP code directly to each publish command:
+Useful focused commands include:
 
 ```bash
-npm publish --workspace=packages/shared --access public --otp=<code>
-npm publish --workspace=packages/cli --otp=<code>
+npm test --workspace=packages/cli
+npm test --workspace=packages/dashboard
 ```
 
-## Questions?
+When changing migration state, drift detection, readiness, simulation, repair, schema parsing, or Prisma compatibility, include regression tests for failure and unknown states—not only the success path.
 
-Open a support request through the
-[GitHub issue chooser](https://github.com/prisma-flow/prisma-flow/issues/new/choose).
+Changes that claim support for a Prisma version or database provider should include integration evidence appropriate to that claim.
+
+## Project structure
+
+```text
+prisma-flow/
+├── packages/
+│   ├── cli/           # prisma-flow npm package, Commander CLI, Hono API
+│   ├── dashboard/     # Next.js static dashboard bundled into the CLI
+│   ├── shared/        # shared TypeScript types, Zod schemas, errors
+│   └── website/       # public website/documentation application
+├── docs/              # architecture, roadmap, product notes
+├── test-project/      # local Prisma fixture
+└── .github/           # CI, release, security, issue and PR configuration
+```
+
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) and [docs/ROADMAP.md](./docs/ROADMAP.md) before proposing large architectural changes.
+
+## Scope and design principles
+
+For the current V1, PrismaFlow is a local-first open-source developer tool. Avoid introducing cloud accounts, billing, multi-tenancy, enterprise controls, or speculative commercial architecture unless the roadmap explicitly changes.
+
+PrismaFlow should complement Prisma rather than reimplement Prisma's migration engine. Version-specific behavior should move toward explicit capability/adaptor boundaries instead of scattered version checks.
+
+Safety-related output must distinguish verified results from heuristics or unknown states. If verification fails, do not turn that failure into a green result.
+
+## Releases
+
+Releases are automated with Release Please. Conventional Commits merged into `main` feed the release PR. The release workflow performs the production gate, publishes package versions that do not already exist, and creates the corresponding GitHub release/tag.
+
+Do not manually change package versions as part of an ordinary feature or fix PR unless the release process specifically requires it.
+
+Before merging a release PR:
+
+```bash
+npm run verify:release
+```
+
+Published artifacts should be smoke-tested from a clean project after release.
+
+## Governance
+
+See [GOVERNANCE.md](./GOVERNANCE.md) for the current maintainer model and how project decisions are made.
+
+## Questions
+
+Use [GitHub Discussions](https://github.com/prisma-flow/prisma-flow/discussions) for questions, ideas, and design conversation. Use Issues when the work is concrete and actionable.

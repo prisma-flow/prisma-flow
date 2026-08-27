@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions and support
+    url: https://github.com/prisma-flow/prisma-flow/discussions/categories/q-a
+    about: Ask setup, usage, and workflow questions in GitHub Discussions.
+  - name: Ideas and design discussions
+    url: https://github.com/prisma-flow/prisma-flow/discussions/categories/ideas
+    about: Share early ideas and discuss project direction before opening an actionable issue.
   - name: Security vulnerability
     url: https://github.com/prisma-flow/prisma-flow/security/advisories/new
-    about: Please report suspected vulnerabilities privately, not in public issues.
+    about: Please report suspected vulnerabilities privately, not in public issues or discussions.
