@@ -1,5 +1,6 @@
 {
   "name": "prisma-flow-root",
+  "version": "0.2.0",
   "private": true,
   "license": "MIT",
   "packageManager": "npm@11.8.0",
