@@ -1,57 +1,45 @@
 # PrismaFlow Architecture
 
-PrismaFlow V1 is a local-first DevTool. The CLI runs in the user's Prisma project, starts a local API server, and serves the dashboard with an ephemeral session token.
+PrismaFlow V1 is a local-first DevTool. The CLI runs in the user's Prisma project, starts a local API server bound to `127.0.0.1`, and serves the dashboard with an ephemeral session token.
 
 ## Runtime Flow
 
 ```text
 Prisma project
-  -> prisma-flow CLI
-  -> project detection
-  -> Prisma CLI commands and local engine analysis
-  -> Hono API server on localhost
-  -> Next.js dashboard served from CLI assets
+  -> prisma-flow CLI (Commander)
+  -> project detection (prisma-detector)
+  -> Prisma version adapter selection (legacy, prisma7, prisma8)
+  -> fail-closed status and drift verification
+  -> centralized readiness evaluation
+  -> Hono API server on 127.0.0.1 loopback
+  -> Next.js dashboard served from CLI public assets
 ```
 
-## Current Packages
+## Packages
 
-- `packages/cli`: Commander commands, Hono API server, and current V1 engines.
-- `packages/dashboard`: Next.js dashboard for timeline, drift, risk, simulation, schema, health, and readiness.
-- `packages/shared`: TypeScript contracts, Zod schemas, and shared errors.
+- `packages/cli`: Commander commands, Hono API server, Prisma capability adapters, simulator, and migration analysis engines.
+- `packages/dashboard`: Next.js static dashboard export for timeline, drift, risk, simulation, schema, health, and readiness.
+- `packages/shared`: Canonical Zod runtime schemas, derived TypeScript types, and structured errors exported as `@prisma-flow/shared`.
 - `packages/website`: public documentation website.
 
-## Target Refactor
+## Core Architectural Invariants
 
-V1 should prioritize working functionality before structural expansion. Once behavior is stable, move toward:
-
-```text
-apps/
-  dashboard/
-  website/
-packages/
-  cli/
-  core/
-  drift-engine/
-  risk-engine/
-  schema-engine/
-  ui/
-```
-
-Do not add cloud, AI, billing, enterprise, collaboration, or multi-tenant packages during V1.
-
-## Core Boundaries
-
-- Project detection finds Prisma schema, migration folder, datasource provider, Prisma version, and environment state.
-- Drift engine compares Prisma schema and live datasource through Prisma tooling.
-- Risk engine analyzes migration SQL and returns explanations plus recommendations.
-- Simulation engine previews migration statements without mutating production data.
-- Schema engine parses Prisma DMMF into dashboard-friendly model, field, enum, and relation data.
-- Dashboard renders API data only; it should not duplicate migration or risk logic.
-
-## Security Model
-
-- Local dashboard binds to localhost by default.
-- API routes require a per-process bearer token.
-- Database credentials stay in the user's environment or local `.env` files.
-- Child processes must use explicit argument arrays.
-- Logs and outputs must avoid leaking `DATABASE_URL`, auth tokens, or credentials.
+1. **Fail-Closed Verification (`UNKNOWN != SAFE`)**:
+   - The central readiness evaluator in `core/readiness.ts` treats unverified or unknown CLI output as non-safe (`deploymentReadiness: 'blocked'`).
+   - Unclassified Prisma CLI exit codes never default to connected or applied.
+2. **Plan-Only Drift Recovery**:
+   - `core/drift-recovery.ts` and `prisma-flow repair` are strictly plan-only. Mutating execution is disabled in V1.
+   - `prisma migrate resolve --applied` is explicitly modeled as reconciling migration history without executing SQL statements.
+3. **Simulation Trust Semantics**:
+   - `core/simulator.ts` explicitly separates `verification: 'executed' | 'static-analysis' | 'not-verified'` and `outcome: 'success' | 'failure' | 'unknown'`.
+   - Heuristic static analysis never reports outcome as `success`.
+4. **Prisma Version Adapter Layer**:
+   - `core/adapters/`: `PrismaAdapter` interface with `PrismaCapabilities`.
+   - `PrismaLegacyAdapter`: Prisma 5 and 6 compatibility.
+   - `Prisma7Adapter`: Prisma 7 migration diff flag conventions.
+   - `Prisma8Adapter`: Prisma 8 contract model and structured migration inspection.
+5. **Loopback-Only Security**:
+   - Server explicitly binds to `127.0.0.1` by default.
+   - API endpoints require an ephemeral 192-bit session token.
+   - CORS is restricted to localhost/loopback origins.
+   - Query parameter tokens are sanitized from request logs.

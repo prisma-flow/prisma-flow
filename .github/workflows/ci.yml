@@ -10,6 +10,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   # ─── Quality gate ─────────────────────────────────────────────────────────
   quality:
@@ -72,6 +75,9 @@ jobs:
 
       - name: Run dashboard tests
         run: npm test --workspace=packages/dashboard -- --reporter=verbose
+
+      - name: Package installation smoke test
+        run: npm run test:packaging
 
       - name: Upload CLI coverage
         uses: actions/upload-artifact@v7
