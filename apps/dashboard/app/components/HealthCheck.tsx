@@ -29,16 +29,16 @@ export function HealthCheck({ status }: { status: ProjectStatus | null }) {
 
   const variants: Record<typeof health, string> = {
     healthy:
-      'bg-green-100 text-green-800 hover:bg-green-100 border-green-200 dark:bg-green-900/30 dark:text-green-400',
+      'border-emerald-300 bg-emerald-100 text-emerald-900 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
     warning:
-      'bg-yellow-100 text-yellow-800 hover:bg-yellow-100 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400',
+      'border-amber-300 bg-amber-100 text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100',
     error: 'bg-destructive/10 text-destructive hover:bg-destructive/10 border-destructive/20',
   }
 
   const Icon = health === 'healthy' ? CheckCircle2 : health === 'warning' ? AlertTriangle : XCircle
 
   return (
-    <Badge className={`px-3 py-1 text-sm font-medium border ${variants[health]}`}>
+    <Badge variant="outline" className={`px-3 py-1 text-sm font-medium ${variants[health]}`}>
       <Icon className="mr-2 h-3.5 w-3.5" />
       {message}
     </Badge>

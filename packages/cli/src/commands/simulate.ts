@@ -46,7 +46,14 @@ export function simulateCommand() {
               ? (resolveSqliteFilePath(project.databaseUrl, project.schemaPath) ?? undefined)
               : undefined
 
-          const result = await simulate(match.name, sqlFile, dbPath, project.provider)
+          const result = await simulate(
+            match.name,
+            sqlFile,
+            dbPath,
+            project.provider,
+            process.env.PRISMAFLOW_SHADOW_DATABASE_URL,
+            project.databaseUrl,
+          )
 
           if (options.json) {
             process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)

@@ -69,7 +69,14 @@ export function evaluateDeploymentReadiness(input: ReadinessInput): DeploymentRe
     },
     {
       id: 'drift',
-      label: 'No schema drift',
+      label:
+        input.driftStatus === 'drifted'
+          ? 'Schema drift detected'
+          : input.driftStatus === 'error'
+            ? 'Schema drift unavailable'
+            : input.driftStatus === 'not_checked'
+              ? 'Drift check pending'
+              : 'No schema drift',
       passed: input.driftStatus === 'clean' && input.driftCount === 0,
       message:
         input.driftStatus === 'clean'
@@ -82,7 +89,7 @@ export function evaluateDeploymentReadiness(input: ReadinessInput): DeploymentRe
     },
     {
       id: 'failed-migrations',
-      label: 'No failed migrations',
+      label: input.migrationsFailed > 0 ? 'Failed migrations detected' : 'No failed migrations',
       passed: isVerified && input.migrationsFailed === 0,
       message: !isVerified
         ? 'Cannot verify failed migration state (verification unproven).'
@@ -92,7 +99,11 @@ export function evaluateDeploymentReadiness(input: ReadinessInput): DeploymentRe
     },
     {
       id: 'pending-migrations',
-      label: 'No pending migrations',
+      label: !isVerified
+        ? 'Pending migrations unknown'
+        : input.migrationsPending > 0
+          ? 'Pending migrations detected'
+          : 'No pending migrations',
       passed: isVerified && input.migrationsPending === 0,
       message: !isVerified
         ? 'Cannot verify pending migration state (verification unproven).'
@@ -102,7 +113,7 @@ export function evaluateDeploymentReadiness(input: ReadinessInput): DeploymentRe
     },
     {
       id: 'critical-risks',
-      label: 'No critical migration risks',
+      label: hasCriticalRisk ? 'Critical migration risks detected' : 'No critical migration risks',
       passed: !hasCriticalRisk,
       message: hasCriticalRisk
         ? 'At least one migration contains a critical data-loss operation.'

@@ -78,76 +78,43 @@ function execFileWithTimeout(
   options: ExecFileOptions,
 ): Promise<ExecFileResult> {
   return new Promise((resolve, reject) => {
-    const child = execFile(command, args, {
-      cwd: options.cwd,
-      env: options.env,
-      windowsHide: true,
-      maxBuffer: 10 * 1024 * 1024,
-    })
-
-    let stdout = ''
-    let stderr = ''
+    let timer: NodeJS.Timeout | null = null
     let timedOut = false
-
-    child.stdout?.setEncoding('utf-8')
-    child.stderr?.setEncoding('utf-8')
-    child.stdout?.on('data', (chunk: string) => {
-      stdout += chunk
-    })
-    child.stderr?.on('data', (chunk: string) => {
-      stderr += chunk
-    })
-
-    const timer =
-      options.timeout && options.timeout > 0
-        ? setTimeout(() => {
-            timedOut = true
-            if (child.pid) killProcessTree(child.pid)
-          }, options.timeout)
-        : null
-
-    child.on('error', (error) => {
-      if (timer) clearTimeout(timer)
-      reject(error)
-    })
-
-    child.on('close', (code, signal) => {
-      if (timer) clearTimeout(timer)
-
-      if (timedOut) {
-        const timeoutError = new Error(
-          `Prisma CLI timed out after ${options.timeout}ms: ${command} ${args.join(' ')}`,
-        ) as Error & {
-          code: string
-          stdout: string
-          stderr: string
-          signal: NodeJS.Signals | null
+    const child = execFile(
+      command,
+      args,
+      {
+        cwd: options.cwd,
+        env: options.env,
+        windowsHide: true,
+        maxBuffer: 10 * 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        if (timer) clearTimeout(timer)
+        if (timedOut) {
+          const timeoutError = new Error(
+            `Prisma CLI timed out after ${options.timeout}ms: ${command} ${args.join(' ')}`,
+          ) as Error & { code: string; stdout: string; stderr: string }
+          timeoutError.code = 'ETIMEDOUT'
+          timeoutError.stdout = stdout
+          timeoutError.stderr = stderr
+          reject(timeoutError)
+          return
         }
-        timeoutError.code = 'ETIMEDOUT'
-        timeoutError.stdout = stdout
-        timeoutError.stderr = stderr
-        timeoutError.signal = signal
-        reject(timeoutError)
-        return
-      }
-
-      if (code && code !== 0) {
-        const commandError = new Error(
-          stderr.trim() || `Prisma CLI exited with code ${code}`,
-        ) as Error & {
-          code: number
-          stdout: string
-          stderr: string
-        }
-        commandError.code = code
+        if (!error) return resolve({ stdout, stderr })
+        const commandError = error as Error & { stdout?: string; stderr?: string }
         commandError.stdout = stdout
         commandError.stderr = stderr
         reject(commandError)
-        return
-      }
+      },
+    )
 
-      resolve({ stdout, stderr })
-    })
+    if (options.timeout && options.timeout > 0) {
+      timer = setTimeout(() => {
+        timedOut = true
+        if (child.pid) killProcessTree(child.pid)
+      }, options.timeout)
+    }
   })
 }
 

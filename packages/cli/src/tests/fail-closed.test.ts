@@ -139,6 +139,21 @@ describe('Fail-Closed Verification Semantics (UNKNOWN != SAFE)', () => {
       expect(driftCheck?.passed).toBe(false)
     })
 
+    it('labels unchecked drift as pending rather than clean', () => {
+      const readiness = evaluateDeploymentReadiness({
+        ...baseInput,
+        migrationsPending: 1,
+        driftStatus: 'not_checked',
+      })
+
+      const driftCheck = readiness.checks.find((c) => c.id === 'drift')
+      expect(readiness.status).toBe('attention')
+      expect(driftCheck).toMatchObject({
+        label: 'Drift check pending',
+        passed: false,
+      })
+    })
+
     it('blocks deployment when failed migrations exist', () => {
       const readiness = evaluateDeploymentReadiness({
         ...baseInput,

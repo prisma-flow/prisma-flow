@@ -25,7 +25,14 @@ app.get('/:migration', async (c) => {
         ? (resolveSqliteFilePath(project.databaseUrl, project.schemaPath) ?? undefined)
         : undefined
 
-    const result = await simulate(match.name, sqlFile, dbPath, project.provider)
+    const result = await simulate(
+      match.name,
+      sqlFile,
+      dbPath,
+      project.provider,
+      process.env.PRISMAFLOW_SHADOW_DATABASE_URL,
+      project.databaseUrl,
+    )
     return c.json({ success: true, data: result })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

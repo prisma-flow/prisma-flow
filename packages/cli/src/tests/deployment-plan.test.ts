@@ -4,6 +4,7 @@ import { type AnalyzedMigration, createDeploymentPlanFromState } from '../core/d
 import type { PrismaProject } from '../core/prisma-detector.js'
 
 const project: PrismaProject = {
+  projectRoot: '/project',
   schemaPath: '/project/prisma/schema.prisma',
   migrationsPath: '/project/prisma/migrations',
   databaseUrl: 'file:./dev.db',
@@ -12,6 +13,8 @@ const project: PrismaProject = {
   provider: 'sqlite',
   packageManager: 'npm',
   prismaVersion: '^5.22.0',
+  configPath: null,
+  environmentFiles: [],
 }
 
 const baseStatus: ProjectStatus = {
@@ -132,6 +135,57 @@ describe('createDeploymentPlanFromState()', () => {
       ),
     ).toBe(true)
     expect(plan.commands.some((command) => command.command === 'prisma migrate deploy')).toBe(true)
+  })
+
+  it('does not present unchecked drift as detected schema drift', () => {
+    const pending = migration({
+      name: '20260705130000_add_profile',
+      status: 'pending',
+    })
+
+    const plan = createDeploymentPlanFromState({
+      project,
+      status: {
+        ...baseStatus,
+        migrationsPending: 1,
+        driftStatus: 'not_checked',
+        deploymentReadiness: {
+          ...baseStatus.deploymentReadiness,
+          status: 'attention',
+          score: 80,
+          checks: [
+            ...baseStatus.deploymentReadiness.checks.filter(
+              (check) => check.id !== 'pending-migrations',
+            ),
+            {
+              id: 'pending-migrations',
+              label: 'No pending migrations',
+              passed: false,
+              message: '1 migration still pending.',
+            },
+            {
+              id: 'drift',
+              label: 'No schema drift',
+              passed: false,
+              message: 'Drift has not been checked.',
+            },
+          ],
+        },
+      },
+      migrations: [pending],
+    })
+
+    expect(plan.summary).toContain('drift verification')
+    expect(plan.actions).toContainEqual(
+      expect.objectContaining({
+        priority: 'recommended',
+        title: 'Verify drift after migration state is current',
+        command: 'prisma-flow check --ci --json',
+      }),
+    )
+    expect(
+      plan.actions.some((action) => action.title === 'Resolve schema drift before deploy'),
+    ).toBe(false)
   })
 
   it('blocks on destructive SQL with an inspect rollback action', () => {

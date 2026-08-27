@@ -61,6 +61,16 @@ function actionForCheck(
         command: 'prisma-flow doctor',
       }
     case 'drift':
+      if (state.status.driftStatus === 'not_checked') {
+        return {
+          priority: 'recommended',
+          title: 'Verify drift after migration state is current',
+          detail:
+            'Drift has not been checked because migration state is pending or database verification is unavailable. Apply or review pending migrations, then run drift detection.',
+          command: 'prisma-flow check --ci --json',
+          href: '/drift',
+        }
+      }
       return {
         priority: 'blocker',
         title: 'Resolve schema drift before deploy',
@@ -222,7 +232,13 @@ function summarizeDecision(status: ProjectStatus): string {
     'pending-migrations': 'pending migrations',
     'critical-risks': 'critical migration risks',
   }
-  const failedLabels = failedChecks.map((check) => issueLabels[check.id]).join(', ')
+  const failedLabels = failedChecks
+    .map((check) =>
+      check.id === 'drift' && status.driftStatus === 'not_checked'
+        ? 'drift verification'
+        : issueLabels[check.id],
+    )
+    .join(', ')
   if (status.deploymentReadiness.status === 'blocked') {
     return `Blocked: fix ${failedLabels} before deploying.`
   }

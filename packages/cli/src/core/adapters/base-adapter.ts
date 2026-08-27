@@ -220,7 +220,9 @@ export async function runPrismaMigrateStatus(
   } catch (err: unknown) {
     const error = err as { stdout?: string; stderr?: string; message?: string }
     const stdout = error.stdout ?? ''
-    const stderr = error.stderr ?? ''
+    // Prisma CLI versions differ on whether diagnostics are written to stderr,
+    // stdout, or only surfaced as the child-process error message.
+    const stderr = error.stderr ?? error.message ?? ''
     logger.debug({ stdout, stderr }, 'prisma migrate status returned non-zero')
     return parseStatusOutput(stdout, stderr, { isExitZero: false })
   }

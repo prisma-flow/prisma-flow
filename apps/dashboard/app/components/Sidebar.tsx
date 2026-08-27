@@ -69,9 +69,7 @@ export function Sidebar() {
 
       {/* Footer */}
       <div className="border-t px-4 py-3">
-        <p className="text-xs text-muted-foreground">
-          PrismaFlow v{process.env.npm_package_version ?? '0.1.0'}
-        </p>
+        <p className="text-xs text-muted-foreground">Prisma migration workspace</p>
       </div>
     </aside>
   )
