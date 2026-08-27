@@ -144,7 +144,9 @@ describe('Release Architecture & Invariants', () => {
     expect(prReconciliationStep).toContain('steps.npm-publish.outputs.published')
 
     // Label creation checks existence and does not suppress failures with || true
-    expect(prReconciliationStep).toContain('gh label view "autorelease: tagged"')
+    expect(prReconciliationStep).toContain(
+      'gh api "repos/${{ github.repository }}/labels/autorelease:%20tagged"',
+    )
     expect(prReconciliationStep).not.toContain('|| true')
     expect(prReconciliationStep).not.toContain('--force')
   })
