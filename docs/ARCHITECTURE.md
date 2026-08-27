@@ -46,3 +46,18 @@ Repository boundaries do not equal deployment boundaries:
    - API endpoints require an ephemeral 192-bit session token.
    - CORS is restricted to localhost/loopback origins.
    - Query parameter tokens are sanitized from request logs.
+
+## Release & Publishing Architecture
+
+PrismaFlow enforces a convergent, single public artifact release boundary:
+
+1. **Single Public Release Scope**:
+   - Commits affecting `packages/cli/**`, `packages/shared/**` (bundled code), or `apps/dashboard/**` (bundled assets) trigger version bumps for the public `prisma-flow` npm package.
+   - Commits touching strictly `apps/website/**`, `docs/**`, or `.github/**` are excluded from triggering CLI package releases.
+2. **Pre-1.0 Versioning Policy (`0.x.y`)**:
+   - `bump-minor-pre-major: true` ensures breaking changes and new features increment minor version (`0.2.0` → `0.3.0`), while bug fixes increment patch version (`0.2.0` → `0.2.1`). Releases do not bump to `1.0.0` until intentional graduation.
+3. **Convergent Publication & Recovery Ordering**:
+   - **Immutable Target**: Automated PR merge triggers resolve `pull_request.merge_commit_sha`. Manual triggers pin the exact commit SHA.
+   - **Tag-First Invariant**: The canonical git tag `v<version>` is verified or created **before** npm publication begins.
+   - **Idempotent Retry**: In retry mode, existing npm packages or existing GitHub Releases are detected and skipped rather than failing, allowing reconciliation of partial release states (States A–D).
+   - **Authoritative Notes**: GitHub Releases are the canonical source for release notes. Root CHANGELOG is not maintained as a separate source of truth.

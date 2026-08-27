@@ -148,7 +148,9 @@ Safety-related output must distinguish verified results from heuristics or unkno
 
 ## Releases
 
-Releases are automated with Release Please. Conventional Commits merged into `main` feed the release PR. The release workflow performs the production gate, publishes package versions that do not already exist, and creates the corresponding GitHub release/tag.
+Releases are automated with Release Please for the single public `prisma-flow` package. Conventional Commits merged into `main` feed the release PR. Commits affecting `packages/cli`, `packages/shared`, or `apps/dashboard` trigger version bumps, while `apps/website` and `docs` remain independent.
+
+The release workflow enforces an immutable commit target, establishes the canonical Git tag `v<semver>` prior to publication, publishes to npm with OIDC provenance, and publishes release notes to GitHub Releases.
 
 Do not manually change package versions as part of an ordinary feature or fix PR unless the release process specifically requires it.
 

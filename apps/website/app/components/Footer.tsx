@@ -17,22 +17,22 @@ const footerLinks = {
   Community: [
     {
       label: 'GitHub',
-      href: 'https://github.com/GitHackerz/prisma-flow',
+      href: 'https://github.com/prisma-flow/prisma-flow',
       external: true,
     },
     {
       label: 'Contributing',
-      href: 'https://github.com/GitHackerz/prisma-flow/blob/main/CONTRIBUTING.md',
+      href: 'https://github.com/prisma-flow/prisma-flow/blob/main/CONTRIBUTING.md',
       external: true,
     },
     {
-      label: 'Changelog',
-      href: 'https://github.com/GitHackerz/prisma-flow/blob/main/CHANGELOG.md',
+      label: 'Releases',
+      href: 'https://github.com/prisma-flow/prisma-flow/releases',
       external: true,
     },
     {
       label: 'License (MIT)',
-      href: 'https://github.com/GitHackerz/prisma-flow/blob/main/LICENSE',
+      href: 'https://github.com/prisma-flow/prisma-flow/blob/main/LICENSE',
       external: true,
     },
   ],
@@ -59,7 +59,7 @@ export function Footer() {
             </p>
             <div className="mt-4 flex items-center gap-3">
               <a
-                href="https://github.com/GitHackerz/prisma-flow"
+                href="https://github.com/prisma-flow/prisma-flow"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 text-muted-foreground transition-colors hover:border-border hover:text-foreground"
