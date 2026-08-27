@@ -54,7 +54,7 @@ PrismaFlow pre-1.0 uses capability-based adapters to interact with different Pri
 | **Prisma 5.x** | Legacy (`PrismaLegacyAdapter`) | Supported (CLI `migrate status` & diff) | SQLite shadow DB / Static analysis | Supported (`@prisma/internals` 5.22) | **Supported** (Fixture integration verified) |
 | **Prisma 6.x** | Legacy (`PrismaLegacyAdapter`) | Supported (CLI `migrate status` & diff) | SQLite shadow DB / Static analysis | Supported | **Supported** (Unit & contract verified) |
 | **Prisma 7.x** | Prisma 7 (`Prisma7Adapter`) | Supported (`--from-schema` / `--to-config-datasource`) | SQLite shadow DB / Static analysis | Limited / Experimental (Internals decoupling ongoing) | **Supported** (Adapter & CLI paths verified) |
-| **Prisma 8.x** (Future) | Prisma 8 (`Prisma8Adapter`) | Unsupported for deployment | Unsupported | Unsupported | **Experimental** (Detection only; fails closed) |
+| **Prisma 8.x** (prerelease / RC) | Prisma 8 (`Prisma8Adapter`) | Unsupported for deployment | Unsupported | Unsupported | **Experimental** (Detection only; fails closed) |
 | **Prisma ≤4 / ≥9 / Unknown** | Unsupported (`UnsupportedPrismaAdapter`) | Unsupported (fails closed) | Unsupported | Unsupported | **Unsupported** (Blocks deployment readiness) |
 
 ### Database Providers
