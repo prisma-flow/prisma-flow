@@ -84,7 +84,9 @@ export class ApiRequestError extends Error {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken()
-  const url = `${BASE_URL}${path}${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
+  // Keep the session token out of request URLs: the Authorization header works
+  // across route navigation and avoids leaking it through browser history/proxies.
+  const url = `${BASE_URL}${path}`
 
   const res = await fetch(url, {
     ...init,

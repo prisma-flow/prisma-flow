@@ -48,6 +48,19 @@ export function NextActions({ status }: { status: ProjectStatus }) {
   const [token, setToken] = useState<string | null>(null)
   const failedChecks = status.deploymentReadiness.checks.filter((check) => !check.passed)
 
+  function actionForCheck(check: ReadinessCheck) {
+    if (check.id === 'drift' && status.driftStatus === 'not_checked') {
+      return {
+        action:
+          'Apply or review pending migrations, then run a drift check before treating the database as schema-aligned.',
+        command: 'prisma-flow check --ci --json',
+        href: '/drift',
+      }
+    }
+
+    return nextActionByCheck[check.id]
+  }
+
   useEffect(() => {
     setToken(new URLSearchParams(window.location.search).get('token'))
   }, [])
@@ -82,7 +95,7 @@ export function NextActions({ status }: { status: ProjectStatus }) {
       ) : (
         <div className="mt-4 grid gap-3">
           {failedChecks.map((check) => {
-            const nextAction = nextActionByCheck[check.id]
+            const nextAction = actionForCheck(check)
             return (
               <div key={check.id} className="rounded-lg border p-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

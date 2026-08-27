@@ -225,6 +225,56 @@ export async function simulateSqlite(
   }
 }
 
+function isLoopbackDatabaseUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1'
+  } catch {
+    return false
+  }
+}
+
+/** Execute SQL only on an explicitly supplied, loopback-only PostgreSQL shadow target. */
+export async function simulatePostgres(
+  migrationName: string,
+  sqlFilePath: string,
+  shadowDatabaseUrl: string,
+  primaryDatabaseUrl?: string,
+): Promise<SimulationResult> {
+  const sql = await fs.readFile(sqlFilePath, 'utf-8')
+  const staticAnalysis = analyseStatically(migrationName, splitStatements(sql))
+  if (!isLoopbackDatabaseUrl(shadowDatabaseUrl) || shadowDatabaseUrl === primaryDatabaseUrl) {
+    return {
+      ...staticAnalysis,
+      verification: 'not-verified',
+      warnings: [
+        ...staticAnalysis.warnings,
+        'PostgreSQL execution requires a distinct loopback PRISMAFLOW_SHADOW_DATABASE_URL.',
+      ],
+    }
+  }
+  try {
+    await execAsync('psql', [shadowDatabaseUrl, '-v', 'ON_ERROR_STOP=1', '-f', sqlFilePath], {
+      timeout: 30_000,
+    })
+    return {
+      ...staticAnalysis,
+      verification: 'executed',
+      outcome: 'success',
+      mode: 'shadow',
+      statements: staticAnalysis.statements.map((statement) => ({ ...statement, success: true })),
+    }
+  } catch (error: unknown) {
+    return {
+      ...staticAnalysis,
+      verification: 'executed',
+      outcome: 'failure',
+      error: error instanceof Error ? error.message : String(error),
+      mode: 'shadow',
+    }
+  }
+}
+
 /**
  * High-level simulate function — picks strategy based on provider and environment.
  */
@@ -233,6 +283,8 @@ export async function simulate(
   sqlFilePath: string,
   dbFilePath?: string,
   provider?: DatabaseProvider | null,
+  shadowDatabaseUrl = process.env.PRISMAFLOW_SHADOW_DATABASE_URL,
+  primaryDatabaseUrl?: string,
 ): Promise<SimulationResult> {
   try {
     const sql = await fs.readFile(sqlFilePath, 'utf-8')
@@ -245,6 +297,10 @@ export async function simulate(
       } catch {
         // SQLite DB file inaccessible — fall back to static analysis
       }
+    }
+
+    if (provider === 'postgresql' && shadowDatabaseUrl) {
+      return simulatePostgres(migrationName, sqlFilePath, shadowDatabaseUrl, primaryDatabaseUrl)
     }
 
     const staticResult = analyseStatically(migrationName, statements)

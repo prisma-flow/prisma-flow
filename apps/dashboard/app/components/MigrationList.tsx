@@ -30,7 +30,7 @@ export function MigrationList({ migrations, isLoading, error }: Props) {
         )}
 
         {!isLoading && !error && (
-          <div className="relative w-full overflow-auto max-h-[400px]">
+          <div className="relative w-full overflow-x-auto">
             <table className="w-full caption-bottom text-sm">
               <thead className="[&_tr]:border-b sticky top-0 bg-card z-10">
                 <tr className="border-b">

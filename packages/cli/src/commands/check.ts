@@ -92,6 +92,8 @@ export function checkCommand() {
                 chalk.green(' ✔  Database connected') +
                   (status.provider ? chalk.dim(` (${status.provider})`) : ''),
               )
+            } else if (status.migrationVerification !== 'verified') {
+              console.log(chalk.yellow(' ⚠  Pending migrations: unknown (database not verified)'))
             } else {
               console.log(chalk.red(' ✖  Database unreachable — check DATABASE_URL'))
             }

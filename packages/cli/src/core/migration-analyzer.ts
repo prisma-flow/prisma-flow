@@ -165,7 +165,7 @@ export async function getMigrations(
   if (!project) return []
 
   const adapter = getPrismaAdapter(project.prismaVersion)
-  const statusResult = await adapter.getMigrationStatus(cwd, project.schemaPath)
+  const statusResult = await adapter.getMigrationStatus(project.projectRoot, project.schemaPath)
 
   return Promise.all(
     project.migrations.map(async (m) => {
@@ -194,7 +194,7 @@ export async function getProjectStatus(cwd: string): Promise<ProjectStatus> {
   if (!project) throw new Error('No Prisma project found')
 
   const adapter = getPrismaAdapter(project.prismaVersion)
-  const statusResult = await adapter.getMigrationStatus(cwd, project.schemaPath)
+  const statusResult = await adapter.getMigrationStatus(project.projectRoot, project.schemaPath)
 
   const migrations = await getMigrations(cwd)
   const migrationsPending = migrations.filter((m) => m.status === 'pending').length
@@ -209,7 +209,7 @@ export async function getProjectStatus(cwd: string): Promise<ProjectStatus> {
     statusResult.verification === 'verified' &&
     migrationsPending === 0
   ) {
-    driftResult = await detectDrift(cwd)
+    driftResult = await detectDrift(project.projectRoot)
   }
 
   const hasDrift = driftResult.status === 'drifted'
@@ -248,8 +248,10 @@ export async function getProjectStatus(cwd: string): Promise<ProjectStatus> {
   return {
     connected: statusResult.connected,
     migrationVerification: statusResult.verification,
-    migrationsApplied: statusResult.connected ? migrationsApplied : 0,
-    migrationsPending: statusResult.connected ? migrationsPending : migrations.length,
+    // Never relabel unverified local files as pending. A database that could not
+    // be queried is unknown, not evidence that every migration is outstanding.
+    migrationsApplied: statusResult.verification === 'verified' ? migrationsApplied : 0,
+    migrationsPending: statusResult.verification === 'verified' ? migrationsPending : 0,
     migrationsFailed,
     migrationsUnknown,
     driftDetected: hasDrift,

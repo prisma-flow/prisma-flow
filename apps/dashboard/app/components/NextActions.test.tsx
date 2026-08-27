@@ -112,4 +112,39 @@ describe('<NextActions />', () => {
       expect(link.getAttribute('href')).toBe('/drift?token=secret-token')
     })
   })
+
+  it('does not describe unchecked drift as detected drift', () => {
+    render(
+      <NextActions
+        status={{
+          ...baseStatus,
+          driftStatus: 'not_checked',
+          deploymentReadiness: {
+            status: 'attention',
+            score: 85,
+            summary: 'Review pending migrations before deployment',
+            checks: [
+              {
+                id: 'drift',
+                label: 'Drift check pending',
+                passed: false,
+                message: 'Drift check not performed while migrations are pending.',
+              },
+            ],
+          },
+        }}
+      />,
+    )
+
+    expect(
+      screen.getByText(
+        'Apply or review pending migrations, then run a drift check before treating the database as schema-aligned.',
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.queryByText(
+        'Review drift evidence and reconcile the Prisma schema or database before deploying.',
+      ),
+    ).toBeNull()
+  })
 })

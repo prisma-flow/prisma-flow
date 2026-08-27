@@ -99,5 +99,10 @@ export async function detectDrift(cwd: string): Promise<DriftDetectionResult> {
   }
 
   const adapter = getPrismaAdapter(project.prismaVersion)
-  return adapter.detectDrift(cwd, project.schemaPath, project.databaseUrl, project.provider)
+  return adapter.detectDrift(
+    project.projectRoot,
+    project.schemaPath,
+    project.databaseUrl,
+    project.provider,
+  )
 }

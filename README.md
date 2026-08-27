@@ -87,6 +87,26 @@ npm install --save-dev prisma-flow
 npm install -g prisma-flow
 ```
 
+pnpm workspaces are supported. Run PrismaFlow from either the workspace root or
+the package that owns the Prisma schema; when a workspace has more than one
+schema, run it from that package until explicit schema selection is configured.
+
+```bash
+# npm
+npm install --save-dev prisma-flow
+npx prisma-flow check --ci --json
+npm exec prisma-flow -- report --format markdown --output prismaflow-report.md
+
+# pnpm
+pnpm add -D prisma-flow
+pnpm exec prisma-flow check --ci --json
+pnpm exec prisma-flow dashboard --no-open
+```
+
+`pnpm prisma-flow` is also available when the package is installed in the
+current workspace's dependency graph. Yarn and Bun workflows are not yet
+verified by this project.
+
 The package exposes both command names:
 
 ```bash
@@ -125,6 +145,16 @@ The dashboard is built as a static Next.js application, bundled into the CLI pac
 - **Schema**: parsed Prisma models, fields, relations, enums, indexes, and constraints.
 
 The dashboard reads the session token from `?token=...` and preserves it while navigating.
+
+### Dashboard preview
+
+The screenshots below use a sanitized local PostgreSQL project with two applied
+migrations and one pending migration. They contain no real project data or
+database credentials.
+
+![PrismaFlow Overview](docs/images/dashboard-overview.jpg)
+
+![PrismaFlow Migration Timeline](docs/images/migration-timeline.jpg)
 
 ## Reports and CI
 
@@ -186,6 +216,24 @@ PRISMAFLOW_TELEMETRY=on
 ```
 
 Telemetry is disabled by default. When explicitly enabled, it sends command/event metadata, a migration-count bucket, Node major version, and OS platform. It does not send project paths, schema content, SQL, database URLs, or user data.
+
+### Prisma configuration and datasource URLs
+
+PrismaFlow supports both classic datasource URLs in `schema.prisma` and Prisma
+7-style `prisma.config.ts` datasource configuration. Static Schema Explorer
+parsing never connects to a database. For older Prisma parser APIs that still
+require a datasource URL, PrismaFlow supplies a provider-valid parser-only URL
+in memory; it never writes to, logs, or changes your schema/configuration.
+
+Database-backed status and drift checks use the Prisma package belonging to the
+detected schema package and its normal Prisma configuration/environment loading.
+If that database cannot be verified, migration status is shown as `UNKNOWN`, not
+as `PENDING`. `STATIC` simulation means SQL was inspected only; `VERIFIED` means
+it executed against an isolated shadow target. SQLite uses a temporary copy. For
+PostgreSQL, execution is opt-in: set a distinct, loopback-only
+`PRISMAFLOW_SHADOW_DATABASE_URL`. Prisma Flow refuses to execute when that URL is
+missing, non-loopback, or equal to `DATABASE_URL`; create and clean up this
+disposable database yourself.
 
 ## Local API & Security Model
 

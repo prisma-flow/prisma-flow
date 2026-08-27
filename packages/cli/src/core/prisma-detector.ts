@@ -6,6 +6,8 @@ import dotenv from 'dotenv'
 export type { Migration }
 
 export interface PrismaProject {
+  /** Directory that owns the schema/configuration, which may differ from the invocation cwd. */
+  projectRoot: string
   schemaPath: string
   migrationsPath: string
   databaseUrl: string
@@ -14,6 +16,8 @@ export interface PrismaProject {
   provider: DatabaseProvider | null
   packageManager: string | null
   prismaVersion: string | null
+  configPath: string | null
+  environmentFiles: string[]
 }
 
 export function resolveSqliteFilePath(databaseUrl: string, schemaPath: string): string | null {
@@ -84,6 +88,54 @@ async function findSchemaPath(cwd: string): Promise<string | null> {
   return null
 }
 
+async function findPrismaProjectRoot(cwd: string): Promise<string | null> {
+  let current = path.resolve(cwd)
+  const seen = new Set<string>()
+  while (!seen.has(current)) {
+    seen.add(current)
+    if (await findSchemaPath(current)) return current
+    const parent = path.dirname(current)
+    if (parent === current) break
+    current = parent
+  }
+
+  // A workspace root is not necessarily a Prisma package. Scan declared workspace
+  // directories and fail closed when more than one schema is present.
+  const patterns = ['apps', 'packages', 'services']
+  const candidates: string[] = []
+  for (const dir of patterns) {
+    const parent = path.join(cwd, dir)
+    const entries = await fs.readdir(parent, { withFileTypes: true }).catch(() => [])
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue
+      const child = path.join(parent, entry.name)
+      if (await findSchemaPath(child)) candidates.push(child)
+    }
+  }
+  return candidates.length === 1 ? (candidates[0] ?? null) : null
+}
+
+async function findPrismaConfig(projectRoot: string): Promise<string | null> {
+  for (const name of [
+    'prisma.config.ts',
+    'prisma.config.js',
+    'prisma.config.mjs',
+    'prisma.config.cjs',
+  ]) {
+    const candidate = path.join(projectRoot, name)
+    if (await tryAccess(candidate)) return candidate
+  }
+  return null
+}
+
+function configPathValue(config: string, section: 'schema' | 'migrations'): string | null {
+  const expression =
+    section === 'schema'
+      ? /schema\s*:\s*['\"]([^'\"]+)['\"]/m
+      : /migrations\s*:\s*\{[\s\S]*?path\s*:\s*['\"]([^'\"]+)['\"]/m
+  return config.match(expression)?.[1] ?? null
+}
+
 /**
  * Read the schema content — handles both single-file and multi-file schemas.
  */
@@ -132,25 +184,42 @@ async function detectPrismaVersion(cwd: string): Promise<string | null> {
 }
 
 export async function detectPrismaProject(cwd: string): Promise<PrismaProject | null> {
-  const schemaPath = await findSchemaPath(cwd)
+  const projectRoot = await findPrismaProjectRoot(cwd)
+  if (!projectRoot) return null
+  const configPath = await findPrismaConfig(projectRoot)
+  const configContent = configPath ? await fs.readFile(configPath, 'utf-8').catch(() => '') : ''
+  const configuredSchema = configPathValue(configContent, 'schema')
+  const schemaPath = configuredSchema
+    ? path.resolve(projectRoot, configuredSchema)
+    : await findSchemaPath(projectRoot)
   if (!schemaPath) return null
 
   const schemaContent = await readSchemaContent(schemaPath)
 
-  // Read DATABASE_URL from .env — try project root first, then cwd/.env
+  // Prisma config commonly loads dotenv itself. We mirror Prisma's useful local
+  // search order without logging values, and allow an already-provided process env.
   let databaseUrl = ''
-  for (const envFile of [path.join(cwd, '.env'), path.join(cwd, 'prisma', '.env')]) {
+  const environmentFiles: string[] = []
+  for (const envFile of [
+    path.join(projectRoot, '.env'),
+    path.join(path.dirname(schemaPath), '.env'),
+    path.join(cwd, '.env'),
+  ]) {
     try {
       const envContent = await fs.readFile(envFile, 'utf-8')
       const parsed = dotenv.parse(envContent)
-      if (parsed.DATABASE_URL) {
+      environmentFiles.push(envFile)
+      if (!databaseUrl && parsed.DATABASE_URL) {
         databaseUrl = parsed.DATABASE_URL
-        break
       }
     } catch {
       /* no .env — that is fine */
     }
   }
+  // Explicit process environment is the normal Prisma/CI override and must win
+  // over a checked-in/local dotenv value. This also keeps status and drift on
+  // the same database target.
+  databaseUrl = process.env.DATABASE_URL ?? databaseUrl
 
   // Determine migrations directory relative to schema
   const schemaDir = (await fs
@@ -159,7 +228,10 @@ export async function detectPrismaProject(cwd: string): Promise<PrismaProject | 
     .catch(() => false))
     ? schemaPath
     : path.dirname(schemaPath)
-  const migrationsPath = path.join(schemaDir, 'migrations')
+  const configuredMigrations = configPathValue(configContent, 'migrations')
+  const migrationsPath = configuredMigrations
+    ? path.resolve(projectRoot, configuredMigrations)
+    : path.join(schemaDir, 'migrations')
 
   const migrations: Migration[] = []
 
@@ -202,11 +274,12 @@ export async function detectPrismaProject(cwd: string): Promise<PrismaProject | 
 
   const provider = detectProviderFromSchema(schemaContent)
   const [packageManager, prismaVersion] = await Promise.all([
-    detectPackageManager(cwd),
-    detectPrismaVersion(cwd),
+    detectPackageManager(projectRoot),
+    detectPrismaVersion(projectRoot),
   ])
 
   return {
+    projectRoot,
     schemaPath,
     migrationsPath,
     databaseUrl,
@@ -215,5 +288,7 @@ export async function detectPrismaProject(cwd: string): Promise<PrismaProject | 
     provider,
     packageManager,
     prismaVersion,
+    configPath,
+    environmentFiles,
   }
 }

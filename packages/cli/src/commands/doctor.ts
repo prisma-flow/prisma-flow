@@ -55,6 +55,7 @@ export function doctorCommand() {
         totalPassed += r.passed
         totalFailed += r.failed
       }
+      const project = await detectPrismaProject(cwd)
 
       if (!options.json) {
         console.log()
@@ -76,7 +77,7 @@ export function doctorCommand() {
           {
             label: 'prisma CLI available',
             run: async () => {
-              const { stdout } = await execPrisma(cwd, ['--version'], {
+              const { stdout } = await execPrisma(project?.projectRoot ?? cwd, ['--version'], {
                 timeout: 15_000,
               })
               const version =
@@ -88,8 +89,6 @@ export function doctorCommand() {
       )
 
       // ── Project checks ────────────────────────────────────────────────────
-      const project = await detectPrismaProject(cwd)
-
       merge(
         await runChecks([
           {
@@ -189,7 +188,10 @@ export function doctorCommand() {
               label: 'database reachable and verified',
               run: async () => {
                 const adapter = getPrismaAdapter(project.prismaVersion)
-                const res = await adapter.getMigrationStatus(cwd, project.schemaPath)
+                const res = await adapter.getMigrationStatus(
+                  project.projectRoot,
+                  project.schemaPath,
+                )
                 if (res.connected && res.verification === 'verified') {
                   const pending = Array.from(res.statusMap.values()).filter(
                     (s) => s === 'pending',
