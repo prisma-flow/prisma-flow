@@ -51,4 +51,4 @@ The dashboard API binds locally and requires a per-session token. PrismaFlow doe
 not require a hosted service for local usage.
 
 Full documentation, contribution guidelines, and security policy are available
-in the main repository: https://github.com/prisma-flow/prisma-flow
+in the main repository: https://github.com/GitHackerz/prisma-flow
