@@ -6,8 +6,8 @@ import type {
   PrismaCapabilities,
 } from './types.js'
 
-export class Prisma8Adapter implements PrismaAdapter {
-  readonly generation = 'prisma8' as const
+export class UnsupportedPrismaAdapter implements PrismaAdapter {
+  readonly generation = 'unknown' as const
 
   constructor(readonly version: string | null) {}
 
@@ -21,7 +21,7 @@ export class Prisma8Adapter implements PrismaAdapter {
       supportsExecutedSimulation: false,
       supportsMigrationHistory: false,
       isProductionSupported: false,
-      isExperimental: true,
+      isExperimental: false,
     }
   }
 
@@ -30,9 +30,10 @@ export class Prisma8Adapter implements PrismaAdapter {
       verification: 'unknown',
       connected: false,
       statusMap: new Map(),
-      errorCode: 'PRISMA8_EXPERIMENTAL_UNSUPPORTED',
-      errorMessage:
-        'Prisma 8 migration verification is experimental and not supported for deployment readiness yet.',
+      errorCode: 'UNSUPPORTED_PRISMA_VERSION',
+      errorMessage: this.version
+        ? `Prisma version "${this.version}" is not supported. Supported versions: Prisma 5, 6, and 7.`
+        : 'Prisma version could not be detected or is not supported. Supported versions: Prisma 5, 6, and 7.',
     }
   }
 
@@ -45,8 +46,9 @@ export class Prisma8Adapter implements PrismaAdapter {
     return {
       items: [],
       status: 'not_checked',
-      errorMessage:
-        'Prisma 8 drift detection is experimental and not supported for deployment readiness yet.',
+      errorMessage: this.version
+        ? `Drift detection is not supported for Prisma version "${this.version}".`
+        : 'Drift detection requires a supported Prisma version (5, 6, or 7).',
     }
   }
 }

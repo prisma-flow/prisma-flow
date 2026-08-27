@@ -45,22 +45,25 @@ Included in V1:
 
 ## Compatibility Matrix
 
-### Prisma Major Versions
+PrismaFlow pre-1.0 uses capability-based adapters to interact with different Prisma CLI generations. Support levels distinguish between implemented adapter support, unit-tested compatibility, and real CI-tested integration.
 
-| Prisma Version | Generation | Migration Status | Drift Detection | Rollback Guidance | Shadow Simulation | Support Level |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Prisma 5.x** | Legacy | Supported (CLI `migrate status`) | Supported (`--from-schema-datamodel` / `--to-schema-datasource`) | Supported | Supported (SQLite shadow DB / static analysis) | **Full Support (Production)** |
-| **Prisma 6.x** | Legacy | Supported (CLI `migrate status`) | Supported (`--from-schema-datamodel` / `--to-schema-datasource`) | Supported | Supported (SQLite shadow DB / static analysis) | **Full Support (Production)** |
-| **Prisma 7.x** | Prisma 7 | Supported (CLI `migrate status`) | Supported (`--from-schema` / `--to-config-datasource`) | Supported | Supported (SQLite shadow DB / static analysis) | **Full Support (Production)** |
-| **Prisma 8.x** (Future) | Prisma 8 | Experimental | Experimental | Experimental | Experimental | **Experimental / Non-Production** |
+### Prisma Versions
 
-### Database Engines
-
-| Database Provider | Migration Visibility | Drift Detection | Heuristic Risk Analysis | Simulation Mode | CI Verification |
+| Prisma Version | Generation / Adapter | Migration Status & Drift | Shadow Simulation | Schema Explorer | Support Level |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **SQLite** | Supported | Supported | Supported | Full shadow DB execution & static analysis | Verified in CI |
-| **PostgreSQL** | Supported | Supported | Supported | Static statement analysis & destructive checks | Verified in CI |
-| **MySQL** | Supported | Supported | Supported | Static statement analysis & destructive checks | Verified in CI |
+| **Prisma 5.x** | Legacy (`PrismaLegacyAdapter`) | Supported (CLI `migrate status` & diff) | SQLite shadow DB / Static analysis | Supported (`@prisma/internals` 5.22) | **Supported** (Fixture integration verified) |
+| **Prisma 6.x** | Legacy (`PrismaLegacyAdapter`) | Supported (CLI `migrate status` & diff) | SQLite shadow DB / Static analysis | Supported | **Supported** (Unit & contract verified) |
+| **Prisma 7.x** | Prisma 7 (`Prisma7Adapter`) | Supported (`--from-schema` / `--to-config-datasource`) | SQLite shadow DB / Static analysis | Limited / Experimental (Internals decoupling ongoing) | **Supported** (Adapter & CLI paths verified) |
+| **Prisma 8.x** (Future) | Prisma 8 (`Prisma8Adapter`) | Unsupported for deployment | Unsupported | Unsupported | **Experimental** (Detection only; fails closed) |
+| **Prisma ≤4 / ≥9 / Unknown** | Unsupported (`UnsupportedPrismaAdapter`) | Unsupported (fails closed) | Unsupported | Unsupported | **Unsupported** (Blocks deployment readiness) |
+
+### Database Providers
+
+| Database Provider | Migration & Drift Visibility | Heuristic Risk Analysis | Simulation Mode | Verification Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **SQLite** | Supported | Supported | Full shadow DB execution (when `sqlite3` available) + static analysis | **Integration verified in CI** (Real fixture & package smoke test) |
+| **PostgreSQL** | Supported (SQL diff parser implemented) | Supported | Heuristic static statement analysis only | **Partially verified** (Unit-tested parser & status maps) |
+| **MySQL** | Supported (SQL diff parser implemented) | Supported | Heuristic static statement analysis only | **Partially verified** (Unit-tested parser & status maps) |
 
 ## Quick start
 

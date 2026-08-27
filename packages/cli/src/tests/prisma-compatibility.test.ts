@@ -3,17 +3,18 @@ import {
   Prisma7Adapter,
   Prisma8Adapter,
   PrismaLegacyAdapter,
+  UnsupportedPrismaAdapter,
   getPrismaAdapter,
   parseDriftOutput,
   parseStatusOutput,
 } from '../core/adapters/index.js'
 import { evaluateDeploymentReadiness } from '../core/readiness.js'
 
-describe('Prisma Compatibility Matrix & Scenarios (Issue #40)', () => {
+describe('Prisma Compatibility Matrix & Scenarios (Issue #40, Blocker 1-4)', () => {
   // ─── Version Adapter Resolution & Capability Contracts ──────────────────────
 
   describe('Prisma Version Matrix', () => {
-    it('Prisma 5 (Legacy) resolves to supported production adapter', () => {
+    it('Prisma 5 (Legacy) resolves to supported adapter', () => {
       const adapter = getPrismaAdapter('5.22.0')
       expect(adapter).toBeInstanceOf(PrismaLegacyAdapter)
       expect(adapter.generation).toBe('legacy')
@@ -24,7 +25,7 @@ describe('Prisma Compatibility Matrix & Scenarios (Issue #40)', () => {
       expect(caps.supportsStructuredMigrationPlan).toBe(false)
     })
 
-    it('Prisma 6 (Legacy) resolves to supported production adapter', () => {
+    it('Prisma 6 (Legacy) resolves to supported adapter', () => {
       const adapter = getPrismaAdapter('^6.3.0')
       expect(adapter).toBeInstanceOf(PrismaLegacyAdapter)
       expect(adapter.generation).toBe('legacy')
@@ -33,7 +34,7 @@ describe('Prisma Compatibility Matrix & Scenarios (Issue #40)', () => {
       expect(caps.isExperimental).toBe(false)
     })
 
-    it('Prisma 7 (Latest Stable) resolves to supported production adapter', () => {
+    it('Prisma 7 resolves to supported adapter with drift support', () => {
       const adapter = getPrismaAdapter('^7.0.1')
       expect(adapter).toBeInstanceOf(Prisma7Adapter)
       expect(adapter.generation).toBe('prisma7')
@@ -43,20 +44,35 @@ describe('Prisma Compatibility Matrix & Scenarios (Issue #40)', () => {
       expect(caps.supportsDrift).toBe(true)
     })
 
-    it('Prisma 8 (Future) is explicitly marked experimental & not production supported', () => {
+    it('Prisma 8 is explicitly marked experimental & not supported for readiness', () => {
       const adapter = getPrismaAdapter('8.0.0-alpha.1')
       expect(adapter).toBeInstanceOf(Prisma8Adapter)
       expect(adapter.generation).toBe('prisma8')
       const caps = adapter.getCapabilities()
       expect(caps.isProductionSupported).toBe(false)
       expect(caps.isExperimental).toBe(true)
-      expect(caps.supportsContractModel).toBe(true)
+      expect(caps.supportsContractModel).toBe(false)
+      expect(caps.supportsStructuredMigrationPlan).toBe(false)
+    })
+
+    it('Unsupported Prisma versions (e.g. 4.x, 9.x, null, invalid string) fail closed', () => {
+      const unsupp1 = getPrismaAdapter('4.16.2')
+      expect(unsupp1).toBeInstanceOf(UnsupportedPrismaAdapter)
+
+      const unsupp2 = getPrismaAdapter('9.0.0')
+      expect(unsupp2).toBeInstanceOf(UnsupportedPrismaAdapter)
+
+      const unsupp3 = getPrismaAdapter(null)
+      expect(unsupp3).toBeInstanceOf(UnsupportedPrismaAdapter)
+
+      const unsupp4 = getPrismaAdapter('banana')
+      expect(unsupp4).toBeInstanceOf(UnsupportedPrismaAdapter)
     })
   })
 
-  // ─── Database Provider Compatibility ────────────────────────────────────────
+  // ─── Database Provider Diff Parsing ─────────────────────────────────────────
 
-  describe('Database Provider Coverage', () => {
+  describe('Database Provider SQL Diff Parsing', () => {
     it('handles SQLite drift and migration status parsing', () => {
       const sqliteSql = 'CREATE TABLE "Post" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT);'
       const items = parseDriftOutput(sqliteSql)
@@ -92,6 +108,77 @@ describe('Prisma Compatibility Matrix & Scenarios (Issue #40)', () => {
       expect(items[0]?.type).toBe('table-missing')
       expect(items[1]?.type).toBe('column-mismatch')
       expect(items[2]?.type).toBe('table-extra')
+    })
+  })
+
+  // ─── Non-Zero False-Green Regression Tests (Blocker 4) ───────────────────────
+
+  describe('Non-Zero Exit & Error Parsing Regression Tests (Blocker 4)', () => {
+    it('Regression 1: stdout has "No pending migrations" but stderr has engine failure (non-zero exit) -> Fail Closed', () => {
+      const stdout = 'No pending migrations'
+      const stderr = 'Internal Prisma engine failure: query engine crashed'
+      const status = parseStatusOutput(stdout, stderr, { isExitZero: false })
+
+      expect(status.verification).toBe('unknown')
+      expect(status.connected).toBe(false)
+      expect(status.errorCode).toBe('UNEXPECTED_CLI_FAILURE')
+
+      const readiness = evaluateDeploymentReadiness({
+        connected: status.connected,
+        migrationVerification: status.verification,
+        migrationsApplied: 0,
+        migrationsPending: 0,
+        migrationsFailed: 0,
+        migrationsUnknown: 1,
+        driftStatus: 'not_checked',
+        driftCount: 0,
+        maxRiskScore: 0,
+        hasCriticalRisk: false,
+        errorMessage: status.errorMessage,
+      })
+
+      expect(readiness.status).toBe('blocked')
+      expect(readiness.score).toBe(0)
+    })
+
+    it('Regression 2: stdout has "Database schema is up to date" but stderr has segmentation fault -> Fail Closed', () => {
+      const stdout = 'Database schema is up to date'
+      const stderr = 'Segmentation fault (core dumped)'
+      const status = parseStatusOutput(stdout, stderr, { isExitZero: false })
+
+      expect(status.verification).toBe('unknown')
+      expect(status.connected).toBe(false)
+      expect(status.errorCode).toBe('UNEXPECTED_CLI_FAILURE')
+
+      const readiness = evaluateDeploymentReadiness({
+        connected: status.connected,
+        migrationVerification: status.verification,
+        migrationsApplied: 0,
+        migrationsPending: 0,
+        migrationsFailed: 0,
+        migrationsUnknown: 1,
+        driftStatus: 'not_checked',
+        driftCount: 0,
+        maxRiskScore: 0,
+        hasCriticalRisk: false,
+        errorMessage: status.errorMessage,
+      })
+
+      expect(readiness.status).toBe('blocked')
+      expect(readiness.score).toBe(0)
+    })
+
+    it('Regression 3: Known pending output on non-zero exit parses correctly as verified pending', () => {
+      const stdout = [
+        'The following migrations have not yet been applied:',
+        '  20260101000000_add_users',
+      ].join('\n')
+      const stderr = ''
+      const status = parseStatusOutput(stdout, stderr, { isExitZero: false })
+
+      expect(status.verification).toBe('verified')
+      expect(status.connected).toBe(true)
+      expect(status.statusMap.get('20260101000000_add_users')).toBe('pending')
     })
   })
 

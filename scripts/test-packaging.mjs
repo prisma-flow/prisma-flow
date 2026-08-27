@@ -11,7 +11,12 @@ const rootDir = path.resolve(__dirname, '..')
 
 console.log('📦 Starting real package artifact smoke test...')
 
-// 1. Build all packages first
+// Read authoritative expected version dynamically from packages/cli/package.json
+const cliPackageJsonPath = path.join(rootDir, 'packages', 'cli', 'package.json')
+const expectedVersion = JSON.parse(fs.readFileSync(cliPackageJsonPath, 'utf8')).version
+console.log(`📋 Authoritative CLI version from package.json: ${expectedVersion}`)
+
+// 1. Build all packages first (strict dashboard copy is enforced)
 console.log('🔨 Ensuring all packages are built...')
 execSync('npm run build', { cwd: rootDir, stdio: 'inherit' })
 
@@ -57,18 +62,22 @@ try {
     throw new Error(`Binary not found at expected path: ${binPath}`)
   }
 
-  // 5. Test prisma-flow --version
+  // 5. Test prisma-flow --version against authoritative version
   console.log('🧪 Testing prisma-flow --version...')
   const versionOutput = execFileSync(binPath, ['--version'], { encoding: 'utf-8' }).trim()
   console.log(`  Reported version: ${versionOutput}`)
-  if (versionOutput !== '0.2.0') {
-    throw new Error(`Expected version 0.2.0, received: ${versionOutput}`)
+  if (versionOutput !== expectedVersion) {
+    throw new Error(`Expected version ${expectedVersion}, received: ${versionOutput}`)
   }
 
   // 6. Test prisma-flow --help
   console.log('🧪 Testing prisma-flow --help...')
   const helpOutput = execFileSync(binPath, ['--help'], { encoding: 'utf-8' })
-  if (!helpOutput.includes('Visual Prisma migration management') || !helpOutput.includes('check')) {
+  if (
+    !helpOutput.includes('prisma-flow') ||
+    !helpOutput.includes('check') ||
+    !helpOutput.includes('status')
+  ) {
     throw new Error('Help output missing expected CLI command descriptions')
   }
 

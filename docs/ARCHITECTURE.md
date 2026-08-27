@@ -37,7 +37,8 @@ Prisma project
    - `core/adapters/`: `PrismaAdapter` interface with `PrismaCapabilities`.
    - `PrismaLegacyAdapter`: Prisma 5 and 6 compatibility.
    - `Prisma7Adapter`: Prisma 7 migration diff flag conventions.
-   - `Prisma8Adapter`: Prisma 8 contract model and structured migration inspection.
+   - `Prisma8Adapter`: Prisma 8 experimental detection (fails closed for deployment).
+   - `UnsupportedPrismaAdapter`: Fails closed on Prisma ≤4, ≥9, or unparseable versions.
 5. **Loopback-Only Security**:
    - Server explicitly binds to `127.0.0.1` by default.
    - API endpoints require an ephemeral 192-bit session token.

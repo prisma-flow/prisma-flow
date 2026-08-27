@@ -23,6 +23,7 @@ function labelDriftType(type: DriftItem['type']): string {
 export function parseStatusOutput(
   stdout: string,
   stderr: string,
+  options?: { isExitZero?: boolean },
 ): {
   verification: MigrationVerificationStatus
   connected: boolean
@@ -32,6 +33,7 @@ export function parseStatusOutput(
 } {
   const statusMap = new Map<string, MigrationStatus>()
   const combined = `${stdout}\n${stderr}`
+  const isExitZero = options?.isExitZero ?? false
 
   // 1. Connection / Reachability failures
   if (
@@ -95,26 +97,69 @@ export function parseStatusOutput(
     }
   }
 
-  // 5. Parse pending/failed migrations from output
+  // 5. Migration history divergence / conflicts (P3005, missing migrations recorded in DB)
+  if (
+    combined.includes('P3005') ||
+    combined.includes('not in sync with the migration history') ||
+    combined.includes('recorded in the database but missing locally')
+  ) {
+    return {
+      verification: 'unknown',
+      connected: true,
+      statusMap,
+      errorCode: 'MIGRATION_HISTORY_CONFLICT',
+      errorMessage: 'Database schema is not in sync with local migration history.',
+    }
+  }
+
+  // 6. Check for fatal stderr errors on non-zero exit
+  const trimmedStderr = stderr.trim()
+  if (!isExitZero && trimmedStderr.length > 0) {
+    // If stderr has fatal error output, NEVER allow stdout text to falsely verify
+    if (
+      trimmedStderr.toLowerCase().includes('error') ||
+      trimmedStderr.toLowerCase().includes('failure') ||
+      trimmedStderr.toLowerCase().includes('fault') ||
+      trimmedStderr.toLowerCase().includes('panic') ||
+      trimmedStderr.toLowerCase().includes('unknown')
+    ) {
+      return {
+        verification: 'unknown',
+        connected: false,
+        statusMap,
+        errorCode: 'UNEXPECTED_CLI_FAILURE',
+        errorMessage: trimmedStderr,
+      }
+    }
+  }
+
+  // 7. Parse pending/failed migrations from output
   const lines = stdout.split('\n')
   let mode: 'none' | 'pending' | 'failed' = 'none'
-  let foundKnownSections = false
 
   for (const rawLine of lines) {
     const line = rawLine.trim()
 
     if (line.includes('have not yet been applied')) {
       mode = 'pending'
-      foundKnownSections = true
       continue
     }
     if (line.match(/failed to apply|rolled back|migration.*failed/i)) {
       mode = 'failed'
-      foundKnownSections = true
       continue
     }
     if (line.includes('Database schema is up to date') || line.includes('No pending migrations')) {
-      foundKnownSections = true
+      // Only clean on EXIT 0. If non-zero exit happened, this cannot be safely verified.
+      if (!isExitZero && trimmedStderr.length > 0) {
+        return {
+          verification: 'unknown',
+          connected: false,
+          statusMap,
+          errorCode: 'UNEXPECTED_CLI_FAILURE',
+          errorMessage: trimmedStderr || 'Prisma CLI exited non-zero with clean stdout.',
+        }
+      }
+      mode = 'none'
       continue
     }
     if (line === '' || line.startsWith('─') || line.startsWith('The following')) {
@@ -130,7 +175,8 @@ export function parseStatusOutput(
     }
   }
 
-  if (foundKnownSections || statusMap.size > 0) {
+  // If we parsed real pending or failed migration entries without fatal errors, state is verified
+  if (statusMap.size > 0) {
     return {
       verification: 'verified',
       connected: true,
@@ -138,14 +184,23 @@ export function parseStatusOutput(
     }
   }
 
-  // 6. Unknown Prisma CLI failure — FAIL CLOSED!
+  // If exit code was 0 and no errors found, clean up to date state is verified
+  if (isExitZero) {
+    return {
+      verification: 'verified',
+      connected: true,
+      statusMap,
+    }
+  }
+
+  // 8. Non-zero exit with no parsed pending/failed migrations — FAIL CLOSED!
   return {
     verification: 'unknown',
     connected: false,
     statusMap,
     errorCode: 'UNEXPECTED_CLI_FAILURE',
     errorMessage:
-      stderr.trim() || stdout.trim() || 'Prisma CLI exited unexpectedly with unknown status.',
+      trimmedStderr || stdout.trim() || 'Prisma CLI exited unexpectedly with unknown status.',
   }
 }
 
@@ -154,21 +209,20 @@ export async function runPrismaMigrateStatus(
   schemaPath: string,
 ): Promise<MigrationStatusResult> {
   try {
-    await execPrisma(cwd, ['migrate', 'status', '--schema', schemaPath], {
-      timeout: 30_000,
-    })
-    // Exit 0: All applied
-    return {
-      verification: 'verified',
-      connected: true,
-      statusMap: new Map(),
-    }
+    const { stdout, stderr } = await execPrisma(
+      cwd,
+      ['migrate', 'status', '--schema', schemaPath],
+      {
+        timeout: 30_000,
+      },
+    )
+    return parseStatusOutput(stdout, stderr, { isExitZero: true })
   } catch (err: unknown) {
     const error = err as { stdout?: string; stderr?: string; message?: string }
     const stdout = error.stdout ?? ''
     const stderr = error.stderr ?? ''
     logger.debug({ stdout, stderr }, 'prisma migrate status returned non-zero')
-    return parseStatusOutput(stdout, stderr)
+    return parseStatusOutput(stdout, stderr, { isExitZero: false })
   }
 }
 
