@@ -1,0 +1,53 @@
+name: Question or support request
+description: Ask for help with setup, usage, or a PrismaFlow workflow.
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for using PrismaFlow. Please redact database URLs, credentials, private schema details, and migration SQL before posting.
+  - type: input
+    id: version
+    attributes:
+      label: PrismaFlow version
+      description: Run `prisma-flow --version` or provide the package version you installed.
+      placeholder: "0.2.0"
+    validations:
+      required: true
+  - type: input
+    id: prisma-version
+    attributes:
+      label: Prisma version
+      description: Run `npx prisma -v` and provide the Prisma CLI version.
+      placeholder: "7.x"
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI
+        - Dashboard
+        - Drift detection
+        - Migration risk
+        - Deployment plan / CI
+        - Installation / setup
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: Explain what you are trying to do, what you expected, and where you are blocked.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Add relevant commands, redacted output, operating system, or database provider.
+    validations:
+      required: false
