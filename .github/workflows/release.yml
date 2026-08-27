@@ -25,6 +25,8 @@ concurrency:
 permissions:
   contents: write
   id-token: write # Required for npm provenance / trusted publishing
+  pull-requests: write # Required to view and update Release Please pull request state
+  issues: write # Required for label mutations on pull requests via GitHub Issues API
 
 jobs:
   publish:
@@ -215,13 +217,78 @@ jobs:
             echo "Successfully created GitHub Release v$VERSION."
           fi
 
+      - name: Reconcile Release PR labels
+        id: reconcile-pr-labels
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION="${{ steps.release-context.outputs.release_version }}"
+          MODE="${{ steps.release-context.outputs.mode }}"
+
+          if [ "$MODE" != "automated" ]; then
+            echo "Execution mode is '$MODE'. PR label reconciliation applies only to automated PR releases. Skipping."
+            exit 0
+          fi
+
+          PR_NUMBER="${{ github.event.pull_request.number }}"
+          echo "Verifying release artifacts before reconciling PR #$PR_NUMBER labels..."
+
+          if ! git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::Tag v$VERSION does not exist. Cannot finalize PR label state."
+            exit 1
+          fi
+
+          if ! npm view "prisma-flow@$VERSION" version >/dev/null 2>&1; then
+            echo "::error::prisma-flow@$VERSION is not published on npm. Cannot finalize PR label state."
+            exit 1
+          fi
+
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "::error::GitHub Release v$VERSION does not exist. Cannot finalize PR label state."
+            exit 1
+          fi
+
+          echo "All release artifacts for v$VERSION verified. Reconciling labels on PR #$PR_NUMBER..."
+
+          # Ensure autorelease: tagged label exists in repository
+          gh label create "autorelease: tagged" --color "0e8a16" --description "Release has been tagged" --force || true
+
+          CURRENT_LABELS="$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name]')"
+          HAS_PENDING="$(echo "$CURRENT_LABELS" | jq 'contains(["autorelease: pending"])')"
+          HAS_TAGGED="$(echo "$CURRENT_LABELS" | jq 'contains(["autorelease: tagged"])')"
+
+          echo "PR #$PR_NUMBER current labels: $CURRENT_LABELS"
+          echo "HAS_PENDING=$HAS_PENDING, HAS_TAGGED=$HAS_TAGGED"
+
+          EDIT_ARGS=()
+          if [ "$HAS_PENDING" = "true" ]; then
+            EDIT_ARGS+=(--remove-label "autorelease: pending")
+          fi
+          if [ "$HAS_TAGGED" != "true" ]; then
+            EDIT_ARGS+=(--add-label "autorelease: tagged")
+          fi
+
+          if [ ${#EDIT_ARGS[@]} -gt 0 ]; then
+            echo "Executing: gh pr edit $PR_NUMBER ${EDIT_ARGS[*]}"
+            gh pr edit "$PR_NUMBER" "${EDIT_ARGS[@]}"
+            echo "Successfully updated PR #$PR_NUMBER labels."
+          else
+            echo "PR #$PR_NUMBER labels are already reconciled (autorelease: tagged present, autorelease: pending absent)."
+          fi
+
       - name: Final Release Summary
         shell: bash
         run: |
           VERSION="${{ steps.release-context.outputs.release_version }}"
+          MODE="${{ steps.release-context.outputs.mode }}"
           echo "================================================="
           echo "Release v$VERSION Status Report:"
+          echo " - Mode:           $MODE"
           echo " - Git Tag:        v$VERSION (Verified)"
           echo " - npm Package:    prisma-flow@$VERSION (Verified)"
           echo " - GitHub Release: v$VERSION (Verified)"
+          if [ "$MODE" = "automated" ]; then
+            echo " - PR Labels:      autorelease: tagged (Reconciled)"
+          fi
           echo "================================================="
