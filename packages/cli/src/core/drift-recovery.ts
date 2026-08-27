@@ -1,202 +1,146 @@
-/**
- * Drift Recovery Engine — analyses database drift and produces actionable
- * repair suggestions.
- *
- * Sources of drift (from detectDrift):
- *  - Schema-only drift: column/table exists in DB but not in schema
- *  - Migration-only drift: migration in history but SQL not applied
- *
- * Recovery strategies:
- *  - APPLY_MIGRATION: run the missing migration
- *  - SQUASH: rebase drift into a new migration
- *  - MANUAL_SQL: provide raw SQL for user to run
- *  - IGNORE: documented, safe to ignore
- */
-
-import fs from 'node:fs/promises'
-import path from 'node:path'
-import type { DriftItem, DriftRecoverySuggestion, DriftRepairStrategy } from '@prisma-flow/shared'
-import { DriftRepairError } from '@prisma-flow/shared'
-import { execPrisma } from './prisma-cli.js'
+import type {
+  DriftItem,
+  DriftRecoverySuggestion,
+  DriftRepairPlan,
+  DriftRepairStrategy,
+  RiskLevel,
+} from '@prisma-flow/shared'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Suggestion generation
+// Suggestion generation (Plan-Only)
 // ─────────────────────────────────────────────────────────────────────────────
 
+function pickStrategy(item: DriftItem): DriftRepairStrategy {
+  switch (item.type) {
+    case 'missing_migration':
+    case 'modified_migration':
+      return 'reconcile_history'
+    case 'extra_table':
+    case 'extra_column':
+    case 'table-missing':
+    case 'table-extra':
+    case 'column-mismatch':
+      return 'manual_migration'
+    case 'index-change':
+    case 'constraint-change':
+      return 'manual_sql'
+    default:
+      return 'review_only'
+  }
+}
+
+function describeStrategy(item: DriftItem, strategy: DriftRepairStrategy): string {
+  const target = item.migrationName ?? item.identifier ?? 'detected change'
+  switch (strategy) {
+    case 'reconcile_history':
+      return `Reconcile migration history record for "${target}". Note: this updates the _prisma_migrations table only and does NOT execute migration SQL.`
+    case 'manual_migration':
+      return `Author a new Prisma migration or update schema.prisma to reflect the "${target}" change.`
+    case 'manual_sql':
+      return `Review and apply manual SQL adjustments for "${target}" after verifying database constraints and indexes.`
+    default:
+      return `Manually inspect "${target}" — automated analysis cannot determine safe resolution.`
+  }
+}
+
+function generateGuidanceSql(item: DriftItem, strategy: DriftRepairStrategy): string | undefined {
+  if (strategy === 'reconcile_history' && item.migrationName) {
+    return `-- Manual history reconciliation only (does NOT run SQL):\n-- npx prisma migrate resolve --applied "${item.migrationName}"`
+  }
+
+  if (
+    strategy === 'manual_migration' &&
+    (item.type === 'extra_table' || item.type === 'table-extra')
+  ) {
+    return `-- Extra table detected. To incorporate into Prisma schema:\n-- 1. Add model to prisma/schema.prisma\n-- 2. Run: npx prisma migrate dev --name sync_${item.identifier ?? 'table'}`
+  }
+
+  if (
+    strategy === 'manual_migration' &&
+    (item.type === 'extra_column' || item.type === 'column-mismatch')
+  ) {
+    return `-- Schema difference detected on ${item.identifier ?? 'column'}.\n-- Update prisma/schema.prisma and generate a migration with: npx prisma migrate dev`
+  }
+
+  if (item.sql) {
+    return `-- Suggested SQL for operator review (do NOT apply without verification):\n${item.sql}`
+  }
+
+  return undefined
+}
+
+function assessRisk(item: DriftItem): RiskLevel {
+  if (item.type === 'modified_migration' || item.type === 'table-missing') return 'high'
+  if (item.type === 'extra_table' || item.type === 'column-mismatch') return 'medium'
+  if (item.type === 'extra_column' || item.type === 'missing_migration') return 'medium'
+  if (item.type === 'index-change') return 'low'
+  return 'medium'
+}
+
+function generateWarnings(item: DriftItem, strategy: DriftRepairStrategy): string[] {
+  const warnings: string[] = []
+
+  if (strategy === 'reconcile_history') {
+    warnings.push(
+      'prisma migrate resolve only updates the migration record; it does NOT execute migration SQL statements on the database.',
+    )
+  }
+
+  if (item.type === 'table-missing') {
+    warnings.push(
+      'The database is missing a table expected by Prisma schema. Queries may fail immediately.',
+    )
+  }
+
+  if (item.type === 'modified_migration') {
+    warnings.push(
+      'Migration file contents differ from what was applied. Manual schema verification required.',
+    )
+  }
+
+  return warnings
+}
+
 /**
- * Generate repair suggestions for a list of drift items.
+ * Generate plan-only repair suggestions for a list of drift items.
  */
 export function generateRepairSuggestions(
   driftItems: DriftItem[],
-  migrationsDir: string,
+  _migrationsDir?: string,
 ): DriftRecoverySuggestion[] {
-  void migrationsDir
   const suggestions: DriftRecoverySuggestion[] = []
 
   for (const item of driftItems) {
     const strategy = pickStrategy(item)
-    const repairSql = generateRepairSql(item, strategy)
+    const sql = generateGuidanceSql(item, strategy)
+    const warnings = generateWarnings(item, strategy)
+
     suggestions.push({
       driftItem: item,
       strategy,
       description: describeStrategy(item, strategy),
-      ...(repairSql !== undefined ? { sql: repairSql } : {}),
-      automated: strategy !== 'MANUAL_SQL',
+      ...(sql !== undefined ? { sql } : {}),
+      automated: false,
       risk: assessRisk(item),
+      warnings,
     })
   }
 
   return suggestions
 }
 
-function pickStrategy(item: DriftItem): DriftRepairStrategy {
-  switch (item.type) {
-    case 'missing_migration':
-      return 'APPLY_MIGRATION'
-    case 'extra_column':
-    case 'extra_table':
-      // Extra objects in DB — could squash or ignore
-      return 'SQUASH'
-    case 'modified_migration':
-      // Migration SQL was changed after apply — complex
-      return 'MANUAL_SQL'
-    default:
-      return 'MANUAL_SQL'
-  }
-}
-
-function describeStrategy(item: DriftItem, strategy: DriftRepairStrategy): string {
-  switch (strategy) {
-    case 'APPLY_MIGRATION':
-      return `Apply missing migration "${item.migrationName ?? item.identifier}" to the database`
-    case 'SQUASH':
-      return `Create a new migration that incorporates the "${item.identifier}" drift (extra ${item.type.replace('extra_', '')} in DB)`
-    case 'MANUAL_SQL':
-      return `Manually review and apply SQL to reconcile "${item.identifier}" — automated repair not safe`
-    case 'IGNORE':
-      return `"${item.identifier}" is safe to ignore (documentation-only drift)`
-    default:
-      return `Review drift for "${item.identifier}"`
-  }
-}
-
-function generateRepairSql(item: DriftItem, strategy: DriftRepairStrategy): string | undefined {
-  if (strategy === 'APPLY_MIGRATION' && item.migrationName) {
-    return `-- Run: npx prisma migrate resolve --applied "${item.migrationName}"`
-  }
-
-  if (strategy === 'SQUASH' && item.type === 'extra_table') {
-    return `-- Extra table detected. To squash into schema:\n-- 1. Add the model to prisma/schema.prisma\n-- 2. Run: npx prisma migrate dev --name squash_${item.identifier}`
-  }
-
-  if (strategy === 'SQUASH' && item.type === 'extra_column') {
-    const identifier = item.identifier ?? 'unknown.unknown'
-    const [table, column] = identifier.split('.')
-    return `-- Extra column ${column} on ${table}. To squash:\n-- 1. Add field to model in prisma/schema.prisma\n-- 2. Run: npx prisma migrate dev --name squash_${column}_on_${table}`
-  }
-
-  if (item.sql) {
-    return `-- Suggested SQL (review carefully before running):\n${item.sql}`
-  }
-
-  return undefined
-}
-
-function assessRisk(item: DriftItem): 'low' | 'medium' | 'high' {
-  if (item.type === 'modified_migration') return 'high'
-  if (item.type === 'extra_table') return 'medium'
-  if (item.type === 'extra_column') return 'low'
-  if (item.type === 'missing_migration') return 'medium'
-  return 'medium'
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Apply repair (automated steps only)
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Attempt to auto-repair APPLY_MIGRATION drift items by running
- * `prisma migrate resolve --applied <name>`.
- *
- * Returns a report of successes and failures.
+ * Build a complete, plan-only DriftRepairPlan.
  */
-export async function applyRepairs(
-  suggestions: DriftRecoverySuggestion[],
-  schemaPath: string,
-  cwd: string,
-): Promise<Array<{ migrationName: string; success: boolean; error?: string }>> {
-  const results: Array<{
-    migrationName: string
-    success: boolean
-    error?: string
-  }> = []
-
-  for (const suggestion of suggestions) {
-    if (suggestion.strategy !== 'APPLY_MIGRATION') continue
-    if (!suggestion.driftItem.migrationName) continue
-
-    const name = suggestion.driftItem.migrationName
-    try {
-      await execPrisma(cwd, ['migrate', 'resolve', '--applied', name, '--schema', schemaPath], {
-        timeout: 30_000,
-      })
-      results.push({ migrationName: name, success: true })
-    } catch (err: unknown) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      results.push({
-        migrationName: name,
-        success: false,
-        error: error.message,
-      })
-    }
-  }
-
-  return results
-}
-
-/**
- * Generate a squash migration for SQUASH strategy items.
- * Copies missed SQL into a new timestamped migration.
- */
-export async function generateSquashMigration(
-  migrationsDir: string,
+export function buildDriftRepairPlan(
   driftItems: DriftItem[],
-  migrationName = 'squash_drift',
-): Promise<string> {
-  const timestamp = new Date()
-    .toISOString()
-    .replace(/[-T:.Z]/g, '')
-    .slice(0, 14)
-
-  const dirName = `${timestamp}_${migrationName}`
-  const migDir = path.join(migrationsDir, dirName)
-
-  try {
-    await fs.mkdir(migDir, { recursive: true })
-
-    const sqlLines = [
-      `-- Squash migration generated by PrismaFlow at ${new Date().toISOString()}`,
-      `-- Addresses ${driftItems.length} drift item(s)`,
-      '',
-    ]
-
-    for (const item of driftItems) {
-      sqlLines.push(`-- Drift: ${item.type} — ${item.identifier}`)
-      if (item.sql) {
-        sqlLines.push(item.sql)
-        sqlLines.push('')
-      } else {
-        sqlLines.push(`-- TODO: Add SQL to reconcile "${item.identifier}"`)
-        sqlLines.push('')
-      }
-    }
-
-    const sqlPath = path.join(migDir, 'migration.sql')
-    await fs.writeFile(sqlPath, sqlLines.join('\n'), 'utf-8')
-
-    return sqlPath
-  } catch (err: unknown) {
-    const error = err instanceof Error ? err : new Error(String(err))
-    throw new DriftRepairError(`Failed to generate squash migration: ${error.message}`, error)
+  migrationsDir?: string,
+): DriftRepairPlan {
+  const suggestions = generateRepairSuggestions(driftItems, migrationsDir)
+  return {
+    generatedAt: new Date().toISOString(),
+    driftCount: driftItems.length,
+    suggestions,
+    isMutatingDisabled: true,
   }
 }
