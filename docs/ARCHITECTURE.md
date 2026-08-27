@@ -15,12 +15,14 @@ Prisma project
   -> Next.js dashboard served from CLI public assets
 ```
 
-## Packages
+## Repository & Deployment Boundaries
 
-- `packages/cli`: Commander commands, Hono API server, Prisma capability adapters, simulator, and migration analysis engines.
-- `packages/dashboard`: Next.js static dashboard export for timeline, drift, risk, simulation, schema, health, and readiness.
-- `packages/shared`: Canonical Zod runtime schemas, derived TypeScript types, and structured errors exported as `@prisma-flow/shared`.
-- `packages/website`: public documentation website.
+Repository boundaries do not equal deployment boundaries:
+
+- `packages/cli`: The **ONLY** public npm package (`prisma-flow`). Contains Commander commands, Hono API server, Prisma capability adapters, simulator, and migration analysis engines. Bundles `@prisma-flow/shared` internally and static assets from `apps/dashboard`.
+- `packages/shared`: Private/internal workspace package containing canonical Zod runtime schemas, derived TypeScript types, and structured errors. Never published to npm; bundled directly into `prisma-flow`.
+- `apps/dashboard`: Private Next.js static application for timeline, drift, risk, simulation, schema, health, and readiness. Exported statically during build and embedded into `packages/cli/public`.
+- `apps/website`: Private Next.js documentation and marketing website, deployed independently to Vercel.
 
 ## Core Architectural Invariants
 

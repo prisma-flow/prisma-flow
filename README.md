@@ -215,22 +215,23 @@ npm run verify:release
 Focused commands:
 
 ```bash
-npm run dev --workspace=packages/website
-npm run dev --workspace=packages/dashboard
+npm run dev --workspace=apps/website
+npm run dev --workspace=apps/dashboard
 npm run dev --workspace=packages/cli
 npm test --workspace=packages/cli
-npm test --workspace=packages/dashboard
+npm test --workspace=apps/dashboard
 ```
 
 ## Repository Structure
 
 ```text
 prisma-flow/
+  apps/
+    dashboard/    # private Next.js static dashboard bundled into the CLI
+    website/      # private Next.js documentation and marketing site (Vercel)
   packages/
-    cli/          # prisma-flow npm package, Commander CLI, Hono API, adapters
-    dashboard/    # Next.js static dashboard bundled into the CLI
-    shared/       # canonical Zod schemas, derived TypeScript types, and errors
-    website/      # public documentation and marketing website
+    cli/          # the ONLY public npm package (prisma-flow): CLI, Hono API, adapters
+    shared/       # private/internal Zod schemas, types, and structured errors
   docs/           # architecture, roadmap, product, and documentation notes
   test-project/   # sample Prisma project
   .github/        # CI, release, security, issue forms, and PR templates

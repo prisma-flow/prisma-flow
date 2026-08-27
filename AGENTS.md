@@ -2,12 +2,12 @@
 
 ## Project Structure & Module Organization
 
-This is an npm workspaces monorepo. Core packages live in `packages/`:
+This is an npm workspaces monorepo:
 
-- `packages/cli`: the `prisma-flow` CLI, Hono API server, commands, and migration logic.
-- `packages/dashboard`: Next.js dashboard UI; React components live under `app/components`.
-- `packages/shared`: Zod schemas, types, and errors exported as `@prisma-flow/shared`.
-- `packages/website`: public Next.js documentation/marketing site.
+- `apps/dashboard`: private Next.js static dashboard UI; bundled directly into the CLI package.
+- `apps/website`: private Next.js documentation and marketing site; independently deployed to Vercel.
+- `packages/cli`: the ONLY public npm package (`prisma-flow`), including CLI commands, Hono server, and bundled dashboard/shared code.
+- `packages/shared`: private/internal workspace package with canonical Zod schemas, types, and structured errors (bundled into the CLI build).
 
 Docs are in `docs/`, CI lives in `.github/workflows/`, and `test-project/` contains a sample Prisma SQLite app.
 

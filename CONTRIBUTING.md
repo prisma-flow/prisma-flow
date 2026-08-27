@@ -114,7 +114,7 @@ Useful focused commands include:
 
 ```bash
 npm test --workspace=packages/cli
-npm test --workspace=packages/dashboard
+npm test --workspace=apps/dashboard
 ```
 
 When changing migration state, drift detection, readiness, simulation, repair, schema parsing, or Prisma compatibility, include regression tests for failure and unknown states—not only the success path.
@@ -125,11 +125,12 @@ Changes that claim support for a Prisma version or database provider should incl
 
 ```text
 prisma-flow/
+├── apps/
+│   ├── dashboard/     # private Next.js static dashboard bundled into the CLI
+│   └── website/       # private Next.js documentation and marketing site (Vercel)
 ├── packages/
-│   ├── cli/           # prisma-flow npm package, Commander CLI, Hono API
-│   ├── dashboard/     # Next.js static dashboard bundled into the CLI
-│   ├── shared/        # shared TypeScript types, Zod schemas, errors
-│   └── website/       # public website/documentation application
+│   ├── cli/           # the ONLY public npm package (prisma-flow): CLI, Hono API, adapters
+│   └── shared/        # private/internal Zod schemas, derived types, structured errors
 ├── docs/              # architecture, roadmap, product notes
 ├── test-project/      # local Prisma fixture
 └── .github/           # CI, release, security, issue and PR configuration
