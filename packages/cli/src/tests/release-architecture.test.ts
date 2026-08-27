@@ -124,6 +124,31 @@ describe('Release Architecture & Invariants', () => {
     expect(releaseWorkflow).toContain('gh release view "v$VERSION"')
   })
 
+  it('enforces bounded retry for npm registry propagation during PR label reconciliation', () => {
+    const prReconciliationStep = releaseWorkflow.slice(
+      releaseWorkflow.indexOf('name: Reconcile Release PR labels'),
+      releaseWorkflow.indexOf('name: Final Release Summary'),
+    )
+
+    // Bounded retry loop exists
+    expect(prReconciliationStep).toMatch(/for\s+attempt\s+in/)
+    expect(prReconciliationStep).toContain('MAX_ATTEMPTS=6')
+    expect(prReconciliationStep).toContain('SLEEP_SECONDS=5')
+    expect(prReconciliationStep).toContain('sleep "$SLEEP_SECONDS"')
+
+    // Fails closed on timeout
+    expect(prReconciliationStep).toContain('if [ "$NPM_VERIFIED" != "true" ]; then')
+    expect(prReconciliationStep).toContain('exit 1')
+
+    // Uses publish step output for diagnostics
+    expect(prReconciliationStep).toContain('steps.npm-publish.outputs.published')
+
+    // Label creation checks existence and does not suppress failures with || true
+    expect(prReconciliationStep).toContain('gh label view "autorelease: tagged"')
+    expect(prReconciliationStep).not.toContain('|| true')
+    expect(prReconciliationStep).not.toContain('--force')
+  })
+
   it('enforces immutable commit targeting in release workflow', () => {
     expect(releaseWorkflow).toContain('github.event.pull_request.merge_commit_sha')
     expect(releaseWorkflow).toContain('Resolve immutable target commit')
@@ -547,6 +572,218 @@ describe('Release Architecture & Invariants', () => {
       expect(result.labelsToAdd).toEqual([])
       expect(result.labelsToRemove).toEqual([])
       expect(result.finalLabels).toEqual(['some-custom-label'])
+    })
+  })
+
+  describe('npm registry propagation bounded retry policy & scenarios', () => {
+    interface RetrySimulationParams {
+      attemptsUntilVisible: number
+      maxAttempts?: number
+      sleepSeconds?: number
+    }
+
+    interface RetrySimulationResult {
+      verified: boolean
+      attemptsMade: number
+      totalSleepSeconds: number
+      exitCode: number
+      logMessages: string[]
+    }
+
+    function simulateNpmRegistryVerification(params: RetrySimulationParams): RetrySimulationResult {
+      const maxAttempts = params.maxAttempts ?? 6
+      const sleepSeconds = params.sleepSeconds ?? 5
+      let verified = false
+      let attemptsMade = 0
+      let totalSleepSeconds = 0
+      const logMessages: string[] = []
+
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        attemptsMade++
+        if (attempt >= params.attemptsUntilVisible) {
+          logMessages.push(`npm registry confirms prisma-flow (attempt ${attempt}/${maxAttempts}).`)
+          verified = true
+          break
+        }
+
+        if (attempt < maxAttempts) {
+          logMessages.push(
+            `npm registry has not propagated prisma-flow yet (attempt ${attempt}/${maxAttempts}). Retrying in ${sleepSeconds}s...`,
+          )
+          totalSleepSeconds += sleepSeconds
+        }
+      }
+
+      const exitCode = verified ? 0 : 1
+      if (!verified) {
+        logMessages.push(
+          '::error::npm registry did not expose prisma-flow within the verification window.',
+        )
+      }
+
+      return {
+        verified,
+        attemptsMade,
+        totalSleepSeconds,
+        exitCode,
+        logMessages,
+      }
+    }
+
+    function reconcilePrLabels(params: {
+      mode: 'automated' | 'bootstrap' | 'retry'
+      tagExists: boolean
+      npmExists: boolean
+      ghReleaseExists: boolean
+      currentLabels: string[]
+    }): {
+      reconciled: boolean
+      labelsToAdd: string[]
+      labelsToRemove: string[]
+      finalLabels: string[]
+      error?: string
+    } {
+      if (params.mode !== 'automated') {
+        return {
+          reconciled: false,
+          labelsToAdd: [],
+          labelsToRemove: [],
+          finalLabels: [...params.currentLabels],
+        }
+      }
+
+      if (!params.tagExists || !params.npmExists || !params.ghReleaseExists) {
+        return {
+          reconciled: false,
+          labelsToAdd: [],
+          labelsToRemove: [],
+          finalLabels: [...params.currentLabels],
+          error: 'Incomplete release: artifacts missing',
+        }
+      }
+
+      const hasPending = params.currentLabels.includes('autorelease: pending')
+      const hasTagged = params.currentLabels.includes('autorelease: tagged')
+
+      const labelsToRemove: string[] = []
+      const labelsToAdd: string[] = []
+
+      if (hasPending) {
+        labelsToRemove.push('autorelease: pending')
+      }
+      if (!hasTagged) {
+        labelsToAdd.push('autorelease: tagged')
+      }
+
+      const finalLabels = params.currentLabels
+        .filter((l) => !labelsToRemove.includes(l))
+        .concat(labelsToAdd)
+
+      return {
+        reconciled: true,
+        labelsToAdd,
+        labelsToRemove,
+        finalLabels,
+      }
+    }
+
+    it('Scenario A — immediate visibility: succeeds on attempt 1 with zero delay and reconciles labels', () => {
+      const retryResult = simulateNpmRegistryVerification({ attemptsUntilVisible: 1 })
+
+      expect(retryResult.verified).toBe(true)
+      expect(retryResult.attemptsMade).toBe(1)
+      expect(retryResult.totalSleepSeconds).toBe(0)
+      expect(retryResult.exitCode).toBe(0)
+      expect(retryResult.logMessages[0]).toContain('attempt 1/6')
+
+      const prResult = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: retryResult.verified,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(prResult.reconciled).toBe(true)
+      expect(prResult.finalLabels).toEqual(['autorelease: tagged'])
+    })
+
+    it('Scenario B — delayed propagation: succeeds on attempt 3 after 2 retries and reconciles labels', () => {
+      const retryResult = simulateNpmRegistryVerification({ attemptsUntilVisible: 3 })
+
+      expect(retryResult.verified).toBe(true)
+      expect(retryResult.attemptsMade).toBe(3)
+      expect(retryResult.totalSleepSeconds).toBe(10)
+      expect(retryResult.exitCode).toBe(0)
+      expect(retryResult.logMessages).toEqual([
+        'npm registry has not propagated prisma-flow yet (attempt 1/6). Retrying in 5s...',
+        'npm registry has not propagated prisma-flow yet (attempt 2/6). Retrying in 5s...',
+        'npm registry confirms prisma-flow (attempt 3/6).',
+      ])
+
+      const prResult = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: retryResult.verified,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(prResult.reconciled).toBe(true)
+      expect(prResult.finalLabels).toEqual(['autorelease: tagged'])
+    })
+
+    it('Scenario C — registry unavailable / package truly absent: all attempts fail, fails closed, leaves pending label', () => {
+      const retryResult = simulateNpmRegistryVerification({ attemptsUntilVisible: 99 })
+
+      expect(retryResult.verified).toBe(false)
+      expect(retryResult.attemptsMade).toBe(6)
+      expect(retryResult.totalSleepSeconds).toBe(25)
+      expect(retryResult.exitCode).toBe(1)
+      expect(retryResult.logMessages.at(-1)).toContain(
+        'did not expose prisma-flow within the verification window',
+      )
+
+      const prResult = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: retryResult.verified,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(prResult.reconciled).toBe(false)
+      expect(prResult.finalLabels).toEqual(['autorelease: pending'])
+      expect(prResult.error).toContain('Incomplete release')
+    })
+
+    it('Scenario D — rerun after partial workflow failure: avoids republish, verifies immediately, reconciles labels', () => {
+      const rerunState = {
+        tagExists: true,
+        npmPublishedPrior: true,
+        ghReleaseExists: true,
+      }
+
+      // npm-publish step detects existing package -> published=false (skips republishing)
+      const publishStepOutput = { published: !rerunState.npmPublishedPrior }
+      expect(publishStepOutput.published).toBe(false)
+
+      // Verification succeeds on attempt 1 because package is already propagated
+      const retryResult = simulateNpmRegistryVerification({ attemptsUntilVisible: 1 })
+      expect(retryResult.verified).toBe(true)
+      expect(retryResult.attemptsMade).toBe(1)
+
+      // Reconciles PR labels safely
+      const prResult = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: rerunState.tagExists,
+        npmExists: retryResult.verified,
+        ghReleaseExists: rerunState.ghReleaseExists,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(prResult.reconciled).toBe(true)
+      expect(prResult.finalLabels).toEqual(['autorelease: tagged'])
     })
   })
 })
