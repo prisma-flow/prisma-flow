@@ -51,13 +51,20 @@ Repository boundaries do not equal deployment boundaries:
 
 PrismaFlow enforces a convergent, single public artifact release boundary:
 
-1. **Single Public Release Scope**:
-   - Commits affecting `packages/cli/**`, `packages/shared/**` (bundled code), or `apps/dashboard/**` (bundled assets) trigger version bumps for the public `prisma-flow` npm package.
-   - Commits touching strictly `apps/website/**`, `docs/**`, or `.github/**` are excluded from triggering CLI package releases.
-2. **Pre-1.0 Versioning Policy (`0.x.y`)**:
+1. **Single Public Release Scope & Boundary**:
+   - Release Please tracks the repository level (`.`) so that all changes affecting the public `prisma-flow` artifact (`packages/cli/**`, `packages/shared/**`, `apps/dashboard/**`, and root build/packaging configs) participate in release version calculation.
+   - Non-artifact directories and community documentation are explicitly excluded via `exclude-paths` (`apps/website`, `docs`, `.github`, `test-project`, `AGENTS.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `GOVERNANCE.md`, `SECURITY.md`).
+2. **Three-Way Version Synchronization**:
+   - An intentional three-way version invariant is maintained:
+     1. `package.json` (root): `"version": "0.2.0"`, `"private": true`
+     2. `packages/cli/package.json`: `"version": "0.2.0"`, public `prisma-flow`
+     3. `.release-please-manifest.json`: `{"." : "0.2.0"}`
+   - All three remain identical and synchronized by Release Please. `prisma-flow` is the **only** public npm package; the root package is private and never published.
+3. **Pre-1.0 Versioning Policy (`0.x.y`)**:
    - `bump-minor-pre-major: true` ensures breaking changes and new features increment minor version (`0.2.0` → `0.3.0`), while bug fixes increment patch version (`0.2.0` → `0.2.1`). Releases do not bump to `1.0.0` until intentional graduation.
-3. **Convergent Publication & Recovery Ordering**:
+4. **Convergent Publication & Recovery Ordering**:
    - **Immutable Target**: Automated PR merge triggers resolve `pull_request.merge_commit_sha`. Manual triggers pin the exact commit SHA.
+   - **Tag-Target Guard**: If `v<version>` tag already exists during automated release, the workflow verifies it points to the exact immutable release target commit. If there is a mismatch, publication fails closed.
    - **Tag-First Invariant**: The canonical git tag `v<version>` is verified or created **before** npm publication begins.
    - **Idempotent Retry**: In retry mode, existing npm packages or existing GitHub Releases are detected and skipped rather than failing, allowing reconciliation of partial release states (States A–D).
    - **Authoritative Notes**: GitHub Releases are the canonical source for release notes. Root CHANGELOG is not maintained as a separate source of truth.

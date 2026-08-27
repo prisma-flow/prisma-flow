@@ -21,7 +21,17 @@
           "jsonpath": "$.version"
         }
       ],
-      "exclude-paths": ["apps/website", "docs", ".github"]
+      "exclude-paths": [
+        "apps/website",
+        "docs",
+        ".github",
+        "test-project",
+        "AGENTS.md",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "GOVERNANCE.md",
+        "SECURITY.md"
+      ]
     }
   }
 }

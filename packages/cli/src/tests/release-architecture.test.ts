@@ -63,11 +63,21 @@ describe('Release Architecture & Invariants', () => {
     expect(excluded).toContain('apps/website')
     expect(excluded).toContain('docs')
     expect(excluded).toContain('.github')
+    expect(excluded).toContain('test-project')
+    expect(excluded).toContain('AGENTS.md')
+    expect(excluded).toContain('CONTRIBUTING.md')
+    expect(excluded).toContain('CODE_OF_CONDUCT.md')
+    expect(excluded).toContain('GOVERNANCE.md')
+    expect(excluded).toContain('SECURITY.md')
 
     // Public artifact paths must NOT be excluded
     expect(excluded).not.toContain('packages/cli')
     expect(excluded).not.toContain('packages/shared')
     expect(excluded).not.toContain('apps/dashboard')
+    expect(excluded).not.toContain('package.json')
+    expect(excluded).not.toContain('package-lock.json')
+    expect(excluded).not.toContain('turbo.json')
+    expect(excluded).not.toContain('scripts')
 
     // Extra files must synchronize CLI package version
     const extraFiles = rootPackageConfig['extra-files']
@@ -99,6 +109,11 @@ describe('Release Architecture & Invariants', () => {
     expect(releaseWorkflow).toContain('ref: ${{ steps.target.outputs.target_sha }}')
   })
 
+  it('enforces tag-target commit verification in automated mode', () => {
+    expect(releaseWorkflow).toContain('TAG_COMMIT="$(git rev-list -n 1 "v$VERSION")"')
+    expect(releaseWorkflow).toContain('if [ "$TAG_COMMIT" != "$TARGET_SHA" ]; then')
+  })
+
   it('enforces fail-safe guard on automated release triggers', () => {
     expect(releaseWorkflow).toContain(
       "github.event.pull_request.user.login == 'github-actions[bot]'",
@@ -108,11 +123,88 @@ describe('Release Architecture & Invariants', () => {
     )
   })
 
+  describe('Tag target guard and mode evaluation', () => {
+    function evaluateTagGuard(params: {
+      mode: 'automated' | 'bootstrap' | 'retry'
+      tagExists: boolean
+      tagCommit?: string
+      targetSha: string
+    }): { allowed: boolean; error?: string } {
+      if (params.mode === 'bootstrap') {
+        if (params.tagExists) {
+          return { allowed: false, error: 'Bootstrap failed: tag already exists' }
+        }
+        return { allowed: true }
+      }
+
+      if (params.mode === 'retry') {
+        if (!params.tagExists) {
+          return { allowed: false, error: 'Retry failed: tag does not exist' }
+        }
+        return { allowed: true }
+      }
+
+      // Automated mode
+      if (params.tagExists) {
+        if (params.tagCommit !== params.targetSha) {
+          return {
+            allowed: false,
+            error: `Canonical tag points to ${params.tagCommit} instead of target ${params.targetSha}`,
+          }
+        }
+      }
+      return { allowed: true }
+    }
+
+    it('automated mode + existing matching tag -> allowed', () => {
+      const res = evaluateTagGuard({
+        mode: 'automated',
+        tagExists: true,
+        tagCommit: 'abc1234',
+        targetSha: 'abc1234',
+      })
+      expect(res.allowed).toBe(true)
+    })
+
+    it('automated mode + existing wrong tag -> fails', () => {
+      const res = evaluateTagGuard({
+        mode: 'automated',
+        tagExists: true,
+        tagCommit: 'oldcommit',
+        targetSha: 'newcommit',
+      })
+      expect(res.allowed).toBe(false)
+      expect(res.error).toContain('Canonical tag points to oldcommit instead of target newcommit')
+    })
+
+    it('bootstrap + existing tag -> fails', () => {
+      const res = evaluateTagGuard({
+        mode: 'bootstrap',
+        tagExists: true,
+        targetSha: 'commit1',
+      })
+      expect(res.allowed).toBe(false)
+      expect(res.error).toContain('tag already exists')
+    })
+
+    it('retry + existing tag -> uses tag as canonical source', () => {
+      const res = evaluateTagGuard({
+        mode: 'retry',
+        tagExists: true,
+        tagCommit: 'releasecommit',
+        targetSha: 'releasecommit',
+      })
+      expect(res.allowed).toBe(true)
+    })
+  })
+
   describe('Path exclusion and version bump simulation', () => {
     const excludedPaths = releaseConfig.packages['.']['exclude-paths']
 
     function shouldTriggerRelease(filesChanged: string[]): boolean {
-      return filesChanged.some((file) => !excludedPaths.some((exc: string) => file.startsWith(exc)))
+      return filesChanged.some(
+        (file) => !excludedPaths.some((exc: string) => file === exc || file.startsWith(`${exc}/`)),
+      )
     }
 
     function calculateNextVersion(
@@ -167,6 +259,13 @@ describe('Release Architecture & Invariants', () => {
     it('ignores docs and github workflows from triggering release bump', () => {
       expect(shouldTriggerRelease(['docs/ARCHITECTURE.md'])).toBe(false)
       expect(shouldTriggerRelease(['.github/workflows/ci.yml'])).toBe(false)
+    })
+
+    it('ignores test-project and community documentation from triggering release bump', () => {
+      expect(shouldTriggerRelease(['test-project/prisma/schema.prisma'])).toBe(false)
+      expect(shouldTriggerRelease(['AGENTS.md'])).toBe(false)
+      expect(shouldTriggerRelease(['CONTRIBUTING.md'])).toBe(false)
+      expect(shouldTriggerRelease(['CODE_OF_CONDUCT.md'])).toBe(false)
     })
 
     it('calculates minor bump for feat in shared (0.2.0 -> 0.3.0)', () => {

@@ -124,6 +124,7 @@ jobs:
             fi
           else
             # Automated Release Please PR merge
+            MODE="automated"
             if [ "$CLI_VERSION" != "$MANIFEST_VERSION" ]; then
               echo "::error::CLI version ($CLI_VERSION) does not match release manifest ($MANIFEST_VERSION)"
               exit 1
@@ -132,6 +133,7 @@ jobs:
           fi
 
           echo "release_version=$RELEASE_VERSION" >> "$GITHUB_OUTPUT"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
 
       - name: Install workspace dependencies
         run: npm ci
@@ -146,13 +148,23 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ steps.release-context.outputs.release_version }}"
+          MODE="${{ steps.release-context.outputs.mode }}"
           TARGET_SHA="${{ steps.target.outputs.target_sha }}"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           if git rev-parse "v$VERSION" >/dev/null 2>&1; then
-            echo "Canonical tag v$VERSION already exists."
+            TAG_COMMIT="$(git rev-list -n 1 "v$VERSION")"
+            if [ "$MODE" = "automated" ]; then
+              if [ "$TAG_COMMIT" != "$TARGET_SHA" ]; then
+                echo "::error::Canonical tag v$VERSION exists but points to commit $TAG_COMMIT, which does not match immutable target release commit $TARGET_SHA. Automated publication aborted."
+                exit 1
+              fi
+              echo "Canonical tag v$VERSION already exists and correctly points to target commit $TARGET_SHA."
+            elif [ "$MODE" = "retry" ]; then
+              echo "Canonical tag v$VERSION exists pointing to $TAG_COMMIT. Using existing tag as release authority for retry reconciliation."
+            fi
           else
             echo "Creating and pushing canonical tag v$VERSION pointing at $TARGET_SHA..."
             git tag -a "v$VERSION" "$TARGET_SHA" -m "Release v$VERSION"
