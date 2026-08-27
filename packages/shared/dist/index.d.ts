@@ -1,403 +1,27 @@
 import { z } from 'zod';
 
-type MigrationStatus = 'applied' | 'pending' | 'failed';
-type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
-interface Migration {
-    name: string;
-    timestamp: string;
-    status: MigrationStatus;
-    sqlPath: string;
-    createdAt?: string;
-    appliedAt?: string;
-    durationMs?: number;
-}
-interface MigrationDetail extends Migration {
-    sql: string;
-    risks: string[];
-    riskScore?: MigrationRiskScore;
-    rollbackPlan?: RollbackPlan;
-    gitBranch?: string;
-}
-type DriftType = 'table-missing' | 'table-extra' | 'column-mismatch' | 'index-change' | 'constraint-change' | 'unknown' | 'missing_migration' | 'extra_column' | 'extra_table' | 'modified_migration';
-interface DriftItem {
-    sql: string;
-    type: DriftType;
-    description: string;
-    /** Stable identifier for the drifted object (e.g. table name or migration name) */
-    identifier?: string;
-    /** Migration name associated with this drift item */
-    migrationName?: string;
-}
-type DriftDetectionStatus = 'clean' | 'drifted' | 'error';
-interface DriftResult {
-    hasDrift: boolean;
-    driftCount: number;
-    differences: DriftItem[];
-    cachedAt: string | null;
-    status: DriftDetectionStatus;
-    errorMessage?: string;
-}
-interface ProjectStatus {
-    connected: boolean;
-    migrationsApplied: number;
-    migrationsPending: number;
-    migrationsFailed: number;
-    driftDetected: boolean;
-    driftCount: number;
-    riskLevel: RiskLevel;
-    healthScore: number;
-    deploymentReadiness: DeploymentReadiness;
-    lastSync: string;
-    provider?: DatabaseProvider;
-    projectName?: string;
-    schemaPath?: string;
-    migrationsPath?: string;
-    prismaVersion?: string;
-    packageManager?: string;
-    hasDatabaseUrl?: boolean;
-}
-type DeploymentReadinessStatus = 'ready' | 'attention' | 'blocked';
-interface DeploymentReadinessCheck {
-    id: 'database' | 'drift' | 'failed-migrations' | 'pending-migrations' | 'critical-risks';
-    label: string;
-    passed: boolean;
-    message: string;
-}
-interface DeploymentReadiness {
-    status: DeploymentReadinessStatus;
-    score: number;
-    summary: string;
-    checks: DeploymentReadinessCheck[];
-}
-type DeploymentPlanDecision = DeploymentReadinessStatus;
-type DeploymentPlanPriority = 'blocker' | 'recommended' | 'optional';
-interface DeploymentPlanAction {
-    priority: DeploymentPlanPriority;
-    title: string;
-    detail: string;
-    command?: string;
-    href?: string;
-}
-interface DeploymentPlanCommand {
-    label: string;
-    command: string;
-    reason: string;
-}
-interface DeploymentPlanMigrationSummary {
-    total: number;
-    applied: number;
-    pending: number;
-    failed: number;
-    pendingNames: string[];
-    failedNames: string[];
-    highestRisk?: {
-        name: string;
-        level: RiskLevel;
-        score: number;
-        factors: RiskFactor[];
-    };
-}
-interface DeploymentPlanDriftSummary {
-    status: DriftDetectionStatus;
-    detected: boolean;
-    count: number;
-    errorMessage?: string;
-}
-interface DeploymentPlan {
-    schemaVersion: 'prismaflow-plan/v1';
-    generatedAt: string;
-    decision: DeploymentPlanDecision;
-    score: number;
-    summary: string;
-    project: {
-        schemaPath: string;
-        migrationsPath: string;
-        provider?: DatabaseProvider;
-        prismaVersion?: string;
-        packageManager?: string;
-        hasDatabaseUrl: boolean;
-    };
-    checks: DeploymentReadinessCheck[];
-    migrations: DeploymentPlanMigrationSummary;
-    drift: DeploymentPlanDriftSummary;
-    actions: DeploymentPlanAction[];
-    commands: DeploymentPlanCommand[];
-    valueHighlights: string[];
-}
-interface ApiSuccess<T> {
-    success: true;
-    data: T;
-}
-interface ApiError {
-    success: false;
-    error: string;
-}
-type ApiResponse<T> = ApiSuccess<T> | ApiError;
-interface PaginationMeta {
-    page: number;
-    limit: number;
-    total: number;
-    pages: number;
-}
-interface PaginatedResponse<T> {
-    success: true;
-    data: T[];
-    pagination: PaginationMeta;
-}
-type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error';
-type WebhookType = 'slack' | 'discord' | 'http';
-interface WebhookConfig {
-    type: WebhookType;
-    url: string;
-    /** Only send for these event types (all by default) */
-    events?: WebhookEvent[];
-}
-type WebhookEvent = 'drift-detected' | 'migration-failed' | 'check-complete' | 'migration-applied' | 'simulation-complete' | 'risk-threshold-exceeded';
-interface FeatureFlags {
-    riskAnalysis: boolean;
-    webhookAlerts: boolean;
-    auditLog: boolean;
-    ciAnnotations: boolean;
-    /** Roadmap: multi-environment comparison */
-    envComparison: boolean;
-    /** Roadmap: rollback generation */
-    rollbackGen: boolean;
-    /** Migration simulation */
-    simulation: boolean;
-    /** Roadmap: git-awareness features */
-    gitAwareness: boolean;
-}
-interface PrismaFlowConfig {
-    port?: number;
-    logLevel?: LogLevel;
-    openBrowser?: boolean;
-    features?: Partial<FeatureFlags>;
-    webhooks?: WebhookConfig[];
-    /** Named environments for cross-env comparison */
-    environments?: Array<{
-        name: string;
-        databaseUrl: string;
-    }>;
-    /** Maximum audit log file size in MB before rotation (default: 10) */
-    auditLogMaxMb?: number;
-    /** Risk threshold that triggers warnings (default: medium) */
-    riskThreshold?: RiskLevel;
-}
-type AuditAction = 'dashboard.start' | 'status.check' | 'drift.detect' | 'drift.repair' | 'migration.check' | 'migration.apply' | 'migration.simulate' | 'migration.rollback' | 'migration.inspect' | 'migration.history' | 'migration.create' | 'deployment.plan' | 'doctor.run' | 'env.compare' | 'schema.diff';
-interface AuditEntry {
-    timestamp: string;
-    action: AuditAction;
-    cwd: string;
-    result: 'success' | 'failure' | 'warning';
-    detail?: Record<string, unknown>;
-}
-interface RiskFactor {
-    pattern: string;
-    severity: RiskLevel;
-    description: string;
-    affectedTable?: string;
-    estimatedRows?: number;
-    recommendation: string;
-}
-interface MigrationRiskScore {
-    /** Composite score 0-100 (higher = more dangerous) */
-    score: number;
-    level: RiskLevel;
-    factors: RiskFactor[];
-}
-interface RollbackStep {
-    /** Original forward statement index */
-    index: number;
-    forwardSql: string;
-    rollbackSql: string;
-    /** True if PrismaFlow can run this automatically */
-    automated: boolean;
-    warning?: string;
-}
-interface RollbackPlan {
-    migrationName: string;
-    steps: RollbackStep[];
-    hasManualSteps: boolean;
-    warnings: string[];
-    generatedAt: string;
-    /** True only when every step is automated */
-    automated: boolean;
-    /** Legacy — full SQL string rendered from steps */
-    sql?: string;
-}
-type SimulationMode = 'static' | 'shadow' | 'live';
-interface SimulationStatement {
-    index: number;
-    sql: string;
-    type: 'CREATE_TABLE' | 'ALTER_TABLE' | 'DROP_TABLE' | 'CREATE_INDEX' | 'DROP_INDEX' | 'INSERT' | 'UPDATE' | 'DELETE' | 'TRUNCATE' | 'OTHER';
-    isDestructive: boolean;
-    warnings: string[];
-    estimatedRowsAffected?: number;
-    /** Set when run against a real or shadow DB */
-    success?: boolean;
-    error?: string;
-    durationMs?: number;
-}
-interface SimulationResult {
-    migrationName: string;
-    statements: SimulationStatement[];
-    wouldSucceed: boolean;
-    destructiveStatements: number;
-    warnings: string[];
-    simulatedAt: string;
-    mode: SimulationMode;
-    error?: string;
-    /** Legacy fields for backwards compat */
-    appliedStatements?: SimulationStatement[];
-    errors?: string[];
-    totalDurationMs?: number;
-}
-type DriftRepairStrategy = 'APPLY_MIGRATION' | 'SQUASH' | 'MANUAL_SQL' | 'IGNORE';
-interface DriftRecoverySuggestion {
-    driftItem: DriftItem;
-    strategy: DriftRepairStrategy;
-    description: string;
-    sql?: string;
-    automated: boolean;
-    risk: 'low' | 'medium' | 'high';
-}
-type SchemaDiffType = 'model_added' | 'model_removed' | 'field_added' | 'field_removed' | 'field_type_changed' | 'added' | 'removed' | 'modified';
-interface SchemaDiff {
-    type: SchemaDiffType;
-    /** Model/table name */
-    modelName?: string;
-    /** Field/column name (for field-level diffs) */
-    fieldName?: string;
-    oldType?: string;
-    newType?: string;
-    description: string;
-    breaking: boolean;
-    /** Legacy fields */
-    entity?: string;
-    field?: string;
-    before?: string;
-    after?: string;
-}
-interface MigrationHistoryDiff {
-    sourceEnv: string;
-    targetEnv: string;
-    sourceApplied: number;
-    targetApplied: number;
-    onlyInSource: string[];
-    onlyInTarget: string[];
-    divergencePoint?: string;
-    inSync: boolean;
-    /** Legacy fields */
-    name?: string;
-    presentInSource?: boolean;
-    presentInTarget?: boolean;
-    statusInSource?: MigrationStatus;
-    statusInTarget?: MigrationStatus;
-}
-interface EnvironmentEntry {
-    name: string;
-    reachable: boolean;
-    appliedCount: number;
-    pendingCount: number;
-    failedCount: number;
-}
-interface EnvironmentComparison {
-    referenceEnv: string;
-    environments: EnvironmentEntry[];
-    diffs: MigrationHistoryDiff[];
-    allInSync: boolean;
-    comparedAt: string;
-    /** Legacy fields */
-    source?: string;
-    target?: string;
-    schemaDiffs?: SchemaDiff[];
-    migrationDiffs?: MigrationHistoryDiff[];
-}
-interface GitMigrationInfo {
-    migrationName: string;
-    committed: boolean;
-    commitHash?: string;
-    commitAuthor?: string;
-    commitDate?: string;
-    commitMessage?: string;
-    /** Legacy fields */
-    branch?: string;
-    authorName?: string;
-    committedAt?: string;
-}
-interface MigrationConflict {
-    timestamp: string;
-    migrations: string[];
-    type: 'duplicate_timestamp' | 'timestamp-overlap' | 'name-conflict' | 'history-diverge';
-    description: string;
-    /** Legacy fields */
-    migrationA?: string;
-    migrationB?: string;
-    branches?: string[];
-    conflictType?: 'timestamp-overlap' | 'name-conflict' | 'history-diverge';
-}
-type DatabaseProvider = 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver' | 'mongodb';
-interface Organization {
-    id: string;
-    name: string;
-    slug: string;
-    createdAt: string;
-}
-interface Team {
-    id: string;
-    name: string;
-    organizationId: string;
-    createdAt: string;
-}
-interface Project {
-    id: string;
-    name: string;
-    organizationId: string;
-    teamId?: string;
-    createdAt: string;
-    updatedAt: string;
-}
-interface Environment {
-    id: string;
-    name: string;
-    projectId: string;
-    provider: DatabaseProvider;
-    /** Encrypted in SaaS mode */
-    connectionString?: string;
-    createdAt: string;
-    updatedAt: string;
-}
-interface DeploymentEvent {
-    id: string;
-    projectId: string;
-    environmentId: string;
-    migrationsApplied: string[];
-    appliedBy?: string;
-    durationMs: number;
-    success: boolean;
-    error?: string;
-    createdAt: string;
-}
-type SSEEventType = 'status-update' | 'drift-detected' | 'drift-resolved' | 'migration-applied' | 'migration-failed' | 'simulation-progress' | 'simulation-complete' | 'repair-progress' | 'repair-complete';
-interface SSEEvent<T = unknown> {
-    type: SSEEventType;
-    data: T;
-    timestamp: string;
-}
-
-declare const MigrationStatusSchema: z.ZodEnum<["applied", "pending", "failed"]>;
+declare const MigrationStatusSchema: z.ZodEnum<["applied", "pending", "failed", "unknown"]>;
+declare const MigrationVerificationStatusSchema: z.ZodEnum<["verified", "unknown", "error"]>;
 declare const RiskLevelSchema: z.ZodEnum<["low", "medium", "high", "critical"]>;
 declare const DriftTypeSchema: z.ZodEnum<["table-missing", "table-extra", "column-mismatch", "index-change", "constraint-change", "unknown", "missing_migration", "extra_column", "extra_table", "modified_migration"]>;
-declare const DriftDetectionStatusSchema: z.ZodEnum<["clean", "drifted", "error"]>;
+declare const DriftDetectionStatusSchema: z.ZodEnum<["clean", "drifted", "error", "not_checked"]>;
 declare const LogLevelSchema: z.ZodEnum<["trace", "debug", "info", "warn", "error"]>;
 declare const WebhookTypeSchema: z.ZodEnum<["slack", "discord", "http"]>;
+declare const WebhookEventSchema: z.ZodEnum<["drift-detected", "migration-failed", "check-complete", "migration-applied", "simulation-complete", "risk-threshold-exceeded"]>;
 declare const DatabaseProviderSchema: z.ZodEnum<["postgresql", "mysql", "sqlite", "sqlserver", "mongodb"]>;
-declare const DriftRepairStrategySchema: z.ZodEnum<["fix-migration", "revert-manual", "sync-history"]>;
-declare const SchemaDiffTypeSchema: z.ZodEnum<["added", "removed", "modified"]>;
+declare const DriftRepairStrategySchema: z.ZodEnum<["reconcile_history", "manual_migration", "manual_sql", "review_only"]>;
+declare const SchemaDiffTypeSchema: z.ZodEnum<["model_added", "model_removed", "field_added", "field_removed", "field_type_changed", "added", "removed", "modified"]>;
+declare const SimulationVerificationSchema: z.ZodEnum<["executed", "static-analysis", "not-verified"]>;
+declare const SimulationOutcomeSchema: z.ZodEnum<["success", "failure", "unknown"]>;
+declare const SimulationModeSchema: z.ZodEnum<["static", "shadow", "live"]>;
+declare const SimulationStatementTypeSchema: z.ZodEnum<["CREATE_TABLE", "ALTER_TABLE", "DROP_TABLE", "CREATE_INDEX", "DROP_INDEX", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "OTHER"]>;
+declare const DeploymentReadinessStatusSchema: z.ZodEnum<["ready", "attention", "blocked"]>;
+declare const DeploymentReadinessCheckIdSchema: z.ZodEnum<["database", "drift", "migration-verification", "failed-migrations", "pending-migrations", "critical-risks"]>;
+declare const DeploymentPlanPrioritySchema: z.ZodEnum<["blocker", "recommended", "optional"]>;
 declare const MigrationSchema: z.ZodObject<{
     name: z.ZodString;
     timestamp: z.ZodString;
-    status: z.ZodEnum<["applied", "pending", "failed"]>;
+    status: z.ZodEnum<["applied", "pending", "failed", "unknown"]>;
     sqlPath: z.ZodString;
     createdAt: z.ZodOptional<z.ZodString>;
     appliedAt: z.ZodOptional<z.ZodString>;
@@ -405,7 +29,7 @@ declare const MigrationSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     name: string;
     timestamp: string;
-    status: "applied" | "pending" | "failed";
+    status: "applied" | "pending" | "failed" | "unknown";
     sqlPath: string;
     createdAt?: string | undefined;
     appliedAt?: string | undefined;
@@ -413,7 +37,7 @@ declare const MigrationSchema: z.ZodObject<{
 }, {
     name: string;
     timestamp: string;
-    status: "applied" | "pending" | "failed";
+    status: "applied" | "pending" | "failed" | "unknown";
     sqlPath: string;
     createdAt?: string | undefined;
     appliedAt?: string | undefined;
@@ -489,29 +113,84 @@ declare const MigrationRiskScoreSchema: z.ZodObject<{
         estimatedRows?: number | undefined;
     }[];
 }>;
+declare const RollbackStepSchema: z.ZodObject<{
+    index: z.ZodNumber;
+    forwardSql: z.ZodString;
+    rollbackSql: z.ZodString;
+    automated: z.ZodBoolean;
+    warning: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    index: number;
+    forwardSql: string;
+    rollbackSql: string;
+    automated: boolean;
+    warning?: string | undefined;
+}, {
+    index: number;
+    forwardSql: string;
+    rollbackSql: string;
+    automated: boolean;
+    warning?: string | undefined;
+}>;
 declare const RollbackPlanSchema: z.ZodObject<{
     migrationName: z.ZodString;
-    sql: z.ZodString;
-    warnings: z.ZodArray<z.ZodString, "many">;
-    isAutoGenerated: z.ZodBoolean;
-    isFullyReversible: z.ZodBoolean;
+    steps: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        index: z.ZodNumber;
+        forwardSql: z.ZodString;
+        rollbackSql: z.ZodString;
+        automated: z.ZodBoolean;
+        warning: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        index: number;
+        forwardSql: string;
+        rollbackSql: string;
+        automated: boolean;
+        warning?: string | undefined;
+    }, {
+        index: number;
+        forwardSql: string;
+        rollbackSql: string;
+        automated: boolean;
+        warning?: string | undefined;
+    }>, "many">>;
+    hasManualSteps: z.ZodDefault<z.ZodBoolean>;
+    warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    generatedAt: z.ZodString;
+    automated: z.ZodDefault<z.ZodBoolean>;
+    sql: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
+    automated: boolean;
     migrationName: string;
-    sql: string;
+    steps: {
+        index: number;
+        forwardSql: string;
+        rollbackSql: string;
+        automated: boolean;
+        warning?: string | undefined;
+    }[];
+    hasManualSteps: boolean;
     warnings: string[];
-    isAutoGenerated: boolean;
-    isFullyReversible: boolean;
+    generatedAt: string;
+    sql?: string | undefined;
 }, {
     migrationName: string;
-    sql: string;
-    warnings: string[];
-    isAutoGenerated: boolean;
-    isFullyReversible: boolean;
+    generatedAt: string;
+    automated?: boolean | undefined;
+    steps?: {
+        index: number;
+        forwardSql: string;
+        rollbackSql: string;
+        automated: boolean;
+        warning?: string | undefined;
+    }[] | undefined;
+    hasManualSteps?: boolean | undefined;
+    warnings?: string[] | undefined;
+    sql?: string | undefined;
 }>;
 declare const MigrationDetailSchema: z.ZodObject<{
     name: z.ZodString;
     timestamp: z.ZodString;
-    status: z.ZodEnum<["applied", "pending", "failed"]>;
+    status: z.ZodEnum<["applied", "pending", "failed", "unknown"]>;
     sqlPath: z.ZodString;
     createdAt: z.ZodOptional<z.ZodString>;
     appliedAt: z.ZodOptional<z.ZodString>;
@@ -569,28 +248,64 @@ declare const MigrationDetailSchema: z.ZodObject<{
     }>>;
     rollbackPlan: z.ZodOptional<z.ZodObject<{
         migrationName: z.ZodString;
-        sql: z.ZodString;
-        warnings: z.ZodArray<z.ZodString, "many">;
-        isAutoGenerated: z.ZodBoolean;
-        isFullyReversible: z.ZodBoolean;
+        steps: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            index: z.ZodNumber;
+            forwardSql: z.ZodString;
+            rollbackSql: z.ZodString;
+            automated: z.ZodBoolean;
+            warning: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            index: number;
+            forwardSql: string;
+            rollbackSql: string;
+            automated: boolean;
+            warning?: string | undefined;
+        }, {
+            index: number;
+            forwardSql: string;
+            rollbackSql: string;
+            automated: boolean;
+            warning?: string | undefined;
+        }>, "many">>;
+        hasManualSteps: z.ZodDefault<z.ZodBoolean>;
+        warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        generatedAt: z.ZodString;
+        automated: z.ZodDefault<z.ZodBoolean>;
+        sql: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
+        automated: boolean;
         migrationName: string;
-        sql: string;
+        steps: {
+            index: number;
+            forwardSql: string;
+            rollbackSql: string;
+            automated: boolean;
+            warning?: string | undefined;
+        }[];
+        hasManualSteps: boolean;
         warnings: string[];
-        isAutoGenerated: boolean;
-        isFullyReversible: boolean;
+        generatedAt: string;
+        sql?: string | undefined;
     }, {
         migrationName: string;
-        sql: string;
-        warnings: string[];
-        isAutoGenerated: boolean;
-        isFullyReversible: boolean;
+        generatedAt: string;
+        automated?: boolean | undefined;
+        steps?: {
+            index: number;
+            forwardSql: string;
+            rollbackSql: string;
+            automated: boolean;
+            warning?: string | undefined;
+        }[] | undefined;
+        hasManualSteps?: boolean | undefined;
+        warnings?: string[] | undefined;
+        sql?: string | undefined;
     }>>;
     gitBranch: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     name: string;
     timestamp: string;
-    status: "applied" | "pending" | "failed";
+    status: "applied" | "pending" | "failed" | "unknown";
     sqlPath: string;
     sql: string;
     risks: string[];
@@ -610,17 +325,25 @@ declare const MigrationDetailSchema: z.ZodObject<{
         }[];
     } | undefined;
     rollbackPlan?: {
+        automated: boolean;
         migrationName: string;
-        sql: string;
+        steps: {
+            index: number;
+            forwardSql: string;
+            rollbackSql: string;
+            automated: boolean;
+            warning?: string | undefined;
+        }[];
+        hasManualSteps: boolean;
         warnings: string[];
-        isAutoGenerated: boolean;
-        isFullyReversible: boolean;
+        generatedAt: string;
+        sql?: string | undefined;
     } | undefined;
     gitBranch?: string | undefined;
 }, {
     name: string;
     timestamp: string;
-    status: "applied" | "pending" | "failed";
+    status: "applied" | "pending" | "failed" | "unknown";
     sqlPath: string;
     sql: string;
     risks: string[];
@@ -641,10 +364,18 @@ declare const MigrationDetailSchema: z.ZodObject<{
     } | undefined;
     rollbackPlan?: {
         migrationName: string;
-        sql: string;
-        warnings: string[];
-        isAutoGenerated: boolean;
-        isFullyReversible: boolean;
+        generatedAt: string;
+        automated?: boolean | undefined;
+        steps?: {
+            index: number;
+            forwardSql: string;
+            rollbackSql: string;
+            automated: boolean;
+            warning?: string | undefined;
+        }[] | undefined;
+        hasManualSteps?: boolean | undefined;
+        warnings?: string[] | undefined;
+        sql?: string | undefined;
     } | undefined;
     gitBranch?: string | undefined;
 }>;
@@ -652,14 +383,20 @@ declare const DriftItemSchema: z.ZodObject<{
     sql: z.ZodString;
     type: z.ZodEnum<["table-missing", "table-extra", "column-mismatch", "index-change", "constraint-change", "unknown", "missing_migration", "extra_column", "extra_table", "modified_migration"]>;
     description: z.ZodString;
+    identifier: z.ZodOptional<z.ZodString>;
+    migrationName: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+    type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
     description: string;
     sql: string;
+    migrationName?: string | undefined;
+    identifier?: string | undefined;
 }, {
-    type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+    type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
     description: string;
     sql: string;
+    migrationName?: string | undefined;
+    identifier?: string | undefined;
 }>;
 declare const DriftResultSchema: z.ZodObject<{
     hasDrift: z.ZodBoolean;
@@ -668,54 +405,64 @@ declare const DriftResultSchema: z.ZodObject<{
         sql: z.ZodString;
         type: z.ZodEnum<["table-missing", "table-extra", "column-mismatch", "index-change", "constraint-change", "unknown", "missing_migration", "extra_column", "extra_table", "modified_migration"]>;
         description: z.ZodString;
+        identifier: z.ZodOptional<z.ZodString>;
+        migrationName: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     }, {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     }>, "many">;
     cachedAt: z.ZodNullable<z.ZodString>;
-    status: z.ZodEnum<["clean", "drifted", "error"]>;
+    status: z.ZodEnum<["clean", "drifted", "error", "not_checked"]>;
     errorMessage: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "clean" | "drifted" | "error";
+    status: "error" | "clean" | "drifted" | "not_checked";
     hasDrift: boolean;
     driftCount: number;
     differences: {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     }[];
     cachedAt: string | null;
     errorMessage?: string | undefined;
 }, {
-    status: "clean" | "drifted" | "error";
+    status: "error" | "clean" | "drifted" | "not_checked";
     hasDrift: boolean;
     driftCount: number;
     differences: {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     }[];
     cachedAt: string | null;
     errorMessage?: string | undefined;
 }>;
 declare const DeploymentReadinessCheckSchema: z.ZodObject<{
-    id: z.ZodEnum<["database", "drift", "failed-migrations", "pending-migrations", "critical-risks"]>;
+    id: z.ZodEnum<["database", "drift", "migration-verification", "failed-migrations", "pending-migrations", "critical-risks"]>;
     label: z.ZodString;
     passed: z.ZodBoolean;
     message: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     message: string;
-    id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+    id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
     label: string;
     passed: boolean;
 }, {
     message: string;
-    id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+    id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
     label: string;
     passed: boolean;
 }>;
@@ -724,18 +471,18 @@ declare const DeploymentReadinessSchema: z.ZodObject<{
     score: z.ZodNumber;
     summary: z.ZodString;
     checks: z.ZodArray<z.ZodObject<{
-        id: z.ZodEnum<["database", "drift", "failed-migrations", "pending-migrations", "critical-risks"]>;
+        id: z.ZodEnum<["database", "drift", "migration-verification", "failed-migrations", "pending-migrations", "critical-risks"]>;
         label: z.ZodString;
         passed: z.ZodBoolean;
         message: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }, {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }>, "many">;
@@ -745,7 +492,7 @@ declare const DeploymentReadinessSchema: z.ZodObject<{
     summary: string;
     checks: {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }[];
@@ -755,7 +502,7 @@ declare const DeploymentReadinessSchema: z.ZodObject<{
     summary: string;
     checks: {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }[];
@@ -797,6 +544,8 @@ declare const DeploymentPlanMigrationSummarySchema: z.ZodObject<{
     applied: z.ZodNumber;
     pending: z.ZodNumber;
     failed: z.ZodNumber;
+    unknown: z.ZodDefault<z.ZodNumber>;
+    verification: z.ZodDefault<z.ZodEnum<["verified", "unknown", "error"]>>;
     pendingNames: z.ZodArray<z.ZodString, "many">;
     failedNames: z.ZodArray<z.ZodString, "many">;
     highestRisk: z.ZodOptional<z.ZodObject<{
@@ -854,7 +603,9 @@ declare const DeploymentPlanMigrationSummarySchema: z.ZodObject<{
     applied: number;
     pending: number;
     failed: number;
+    unknown: number;
     total: number;
+    verification: "unknown" | "verified" | "error";
     pendingNames: string[];
     failedNames: string[];
     highestRisk?: {
@@ -877,6 +628,8 @@ declare const DeploymentPlanMigrationSummarySchema: z.ZodObject<{
     total: number;
     pendingNames: string[];
     failedNames: string[];
+    unknown?: number | undefined;
+    verification?: "unknown" | "verified" | "error" | undefined;
     highestRisk?: {
         name: string;
         score: number;
@@ -892,17 +645,17 @@ declare const DeploymentPlanMigrationSummarySchema: z.ZodObject<{
     } | undefined;
 }>;
 declare const DeploymentPlanDriftSummarySchema: z.ZodObject<{
-    status: z.ZodEnum<["clean", "drifted", "error"]>;
+    status: z.ZodEnum<["clean", "drifted", "error", "not_checked"]>;
     detected: z.ZodBoolean;
     count: z.ZodNumber;
     errorMessage: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    status: "clean" | "drifted" | "error";
+    status: "error" | "clean" | "drifted" | "not_checked";
     detected: boolean;
     count: number;
     errorMessage?: string | undefined;
 }, {
-    status: "clean" | "drifted" | "error";
+    status: "error" | "clean" | "drifted" | "not_checked";
     detected: boolean;
     count: number;
     errorMessage?: string | undefined;
@@ -936,18 +689,18 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         packageManager?: string | undefined;
     }>;
     checks: z.ZodArray<z.ZodObject<{
-        id: z.ZodEnum<["database", "drift", "failed-migrations", "pending-migrations", "critical-risks"]>;
+        id: z.ZodEnum<["database", "drift", "migration-verification", "failed-migrations", "pending-migrations", "critical-risks"]>;
         label: z.ZodString;
         passed: z.ZodBoolean;
         message: z.ZodString;
     }, "strip", z.ZodTypeAny, {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }, {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }>, "many">;
@@ -956,6 +709,8 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         applied: z.ZodNumber;
         pending: z.ZodNumber;
         failed: z.ZodNumber;
+        unknown: z.ZodDefault<z.ZodNumber>;
+        verification: z.ZodDefault<z.ZodEnum<["verified", "unknown", "error"]>>;
         pendingNames: z.ZodArray<z.ZodString, "many">;
         failedNames: z.ZodArray<z.ZodString, "many">;
         highestRisk: z.ZodOptional<z.ZodObject<{
@@ -1013,7 +768,9 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         applied: number;
         pending: number;
         failed: number;
+        unknown: number;
         total: number;
+        verification: "unknown" | "verified" | "error";
         pendingNames: string[];
         failedNames: string[];
         highestRisk?: {
@@ -1036,6 +793,8 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         total: number;
         pendingNames: string[];
         failedNames: string[];
+        unknown?: number | undefined;
+        verification?: "unknown" | "verified" | "error" | undefined;
         highestRisk?: {
             name: string;
             score: number;
@@ -1051,17 +810,17 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         } | undefined;
     }>;
     drift: z.ZodObject<{
-        status: z.ZodEnum<["clean", "drifted", "error"]>;
+        status: z.ZodEnum<["clean", "drifted", "error", "not_checked"]>;
         detected: z.ZodBoolean;
         count: z.ZodNumber;
         errorMessage: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        status: "clean" | "drifted" | "error";
+        status: "error" | "clean" | "drifted" | "not_checked";
         detected: boolean;
         count: number;
         errorMessage?: string | undefined;
     }, {
-        status: "clean" | "drifted" | "error";
+        status: "error" | "clean" | "drifted" | "not_checked";
         detected: boolean;
         count: number;
         errorMessage?: string | undefined;
@@ -1101,21 +860,21 @@ declare const DeploymentPlanSchema: z.ZodObject<{
     valueHighlights: z.ZodArray<z.ZodString, "many">;
 }, "strip", z.ZodTypeAny, {
     drift: {
-        status: "clean" | "drifted" | "error";
+        status: "error" | "clean" | "drifted" | "not_checked";
         detected: boolean;
         count: number;
         errorMessage?: string | undefined;
     };
     score: number;
+    generatedAt: string;
     summary: string;
     checks: {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }[];
     schemaVersion: "prismaflow-plan/v1";
-    generatedAt: string;
     decision: "ready" | "attention" | "blocked";
     project: {
         schemaPath: string;
@@ -1129,7 +888,9 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         applied: number;
         pending: number;
         failed: number;
+        unknown: number;
         total: number;
+        verification: "unknown" | "verified" | "error";
         pendingNames: string[];
         failedNames: string[];
         highestRisk?: {
@@ -1161,21 +922,21 @@ declare const DeploymentPlanSchema: z.ZodObject<{
     valueHighlights: string[];
 }, {
     drift: {
-        status: "clean" | "drifted" | "error";
+        status: "error" | "clean" | "drifted" | "not_checked";
         detected: boolean;
         count: number;
         errorMessage?: string | undefined;
     };
     score: number;
+    generatedAt: string;
     summary: string;
     checks: {
         message: string;
-        id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+        id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
         label: string;
         passed: boolean;
     }[];
     schemaVersion: "prismaflow-plan/v1";
-    generatedAt: string;
     decision: "ready" | "attention" | "blocked";
     project: {
         schemaPath: string;
@@ -1192,6 +953,8 @@ declare const DeploymentPlanSchema: z.ZodObject<{
         total: number;
         pendingNames: string[];
         failedNames: string[];
+        unknown?: number | undefined;
+        verification?: "unknown" | "verified" | "error" | undefined;
         highestRisk?: {
             name: string;
             score: number;
@@ -1222,11 +985,14 @@ declare const DeploymentPlanSchema: z.ZodObject<{
 }>;
 declare const ProjectStatusSchema: z.ZodObject<{
     connected: z.ZodBoolean;
+    migrationVerification: z.ZodDefault<z.ZodEnum<["verified", "unknown", "error"]>>;
     migrationsApplied: z.ZodNumber;
     migrationsPending: z.ZodNumber;
     migrationsFailed: z.ZodNumber;
+    migrationsUnknown: z.ZodDefault<z.ZodNumber>;
     driftDetected: z.ZodBoolean;
     driftCount: z.ZodNumber;
+    driftStatus: z.ZodDefault<z.ZodEnum<["clean", "drifted", "error", "not_checked"]>>;
     riskLevel: z.ZodEnum<["low", "medium", "high", "critical"]>;
     healthScore: z.ZodNumber;
     deploymentReadiness: z.ZodObject<{
@@ -1234,18 +1000,18 @@ declare const ProjectStatusSchema: z.ZodObject<{
         score: z.ZodNumber;
         summary: z.ZodString;
         checks: z.ZodArray<z.ZodObject<{
-            id: z.ZodEnum<["database", "drift", "failed-migrations", "pending-migrations", "critical-risks"]>;
+            id: z.ZodEnum<["database", "drift", "migration-verification", "failed-migrations", "pending-migrations", "critical-risks"]>;
             label: z.ZodString;
             passed: z.ZodBoolean;
             message: z.ZodString;
         }, "strip", z.ZodTypeAny, {
             message: string;
-            id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+            id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
             label: string;
             passed: boolean;
         }, {
             message: string;
-            id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+            id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
             label: string;
             passed: boolean;
         }>, "many">;
@@ -1255,7 +1021,7 @@ declare const ProjectStatusSchema: z.ZodObject<{
         summary: string;
         checks: {
             message: string;
-            id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+            id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
             label: string;
             passed: boolean;
         }[];
@@ -1265,7 +1031,7 @@ declare const ProjectStatusSchema: z.ZodObject<{
         summary: string;
         checks: {
             message: string;
-            id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+            id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
             label: string;
             passed: boolean;
         }[];
@@ -1281,10 +1047,13 @@ declare const ProjectStatusSchema: z.ZodObject<{
 }, "strip", z.ZodTypeAny, {
     driftCount: number;
     connected: boolean;
+    migrationVerification: "unknown" | "verified" | "error";
     migrationsApplied: number;
     migrationsPending: number;
     migrationsFailed: number;
+    migrationsUnknown: number;
     driftDetected: boolean;
+    driftStatus: "error" | "clean" | "drifted" | "not_checked";
     riskLevel: "low" | "medium" | "high" | "critical";
     healthScore: number;
     deploymentReadiness: {
@@ -1293,7 +1062,7 @@ declare const ProjectStatusSchema: z.ZodObject<{
         summary: string;
         checks: {
             message: string;
-            id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+            id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
             label: string;
             passed: boolean;
         }[];
@@ -1321,7 +1090,7 @@ declare const ProjectStatusSchema: z.ZodObject<{
         summary: string;
         checks: {
             message: string;
-            id: "database" | "drift" | "failed-migrations" | "pending-migrations" | "critical-risks";
+            id: "database" | "drift" | "migration-verification" | "failed-migrations" | "pending-migrations" | "critical-risks";
             label: string;
             passed: boolean;
         }[];
@@ -1333,264 +1102,714 @@ declare const ProjectStatusSchema: z.ZodObject<{
     prismaVersion?: string | undefined;
     packageManager?: string | undefined;
     hasDatabaseUrl?: boolean | undefined;
+    migrationVerification?: "unknown" | "verified" | "error" | undefined;
+    migrationsUnknown?: number | undefined;
+    driftStatus?: "error" | "clean" | "drifted" | "not_checked" | undefined;
     projectName?: string | undefined;
 }>;
 declare const SimulationStatementSchema: z.ZodObject<{
+    index: z.ZodNumber;
     sql: z.ZodString;
-    success: z.ZodBoolean;
+    type: z.ZodEnum<["CREATE_TABLE", "ALTER_TABLE", "DROP_TABLE", "CREATE_INDEX", "DROP_INDEX", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "OTHER"]>;
+    isDestructive: z.ZodBoolean;
+    warnings: z.ZodArray<z.ZodString, "many">;
+    estimatedRowsAffected: z.ZodOptional<z.ZodNumber>;
+    success: z.ZodOptional<z.ZodBoolean>;
     error: z.ZodOptional<z.ZodString>;
-    durationMs: z.ZodNumber;
+    durationMs: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
-    success: boolean;
-    durationMs: number;
+    type: "CREATE_TABLE" | "ALTER_TABLE" | "DROP_TABLE" | "CREATE_INDEX" | "DROP_INDEX" | "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "OTHER";
+    index: number;
+    warnings: string[];
     sql: string;
+    isDestructive: boolean;
     error?: string | undefined;
+    success?: boolean | undefined;
+    durationMs?: number | undefined;
+    estimatedRowsAffected?: number | undefined;
 }, {
-    success: boolean;
-    durationMs: number;
+    type: "CREATE_TABLE" | "ALTER_TABLE" | "DROP_TABLE" | "CREATE_INDEX" | "DROP_INDEX" | "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "OTHER";
+    index: number;
+    warnings: string[];
     sql: string;
+    isDestructive: boolean;
     error?: string | undefined;
+    success?: boolean | undefined;
+    durationMs?: number | undefined;
+    estimatedRowsAffected?: number | undefined;
 }>;
 declare const SimulationResultSchema: z.ZodObject<{
-    success: z.ZodBoolean;
     migrationName: z.ZodString;
-    appliedStatements: z.ZodArray<z.ZodObject<{
+    verification: z.ZodEnum<["executed", "static-analysis", "not-verified"]>;
+    outcome: z.ZodEnum<["success", "failure", "unknown"]>;
+    statements: z.ZodArray<z.ZodObject<{
+        index: z.ZodNumber;
         sql: z.ZodString;
-        success: z.ZodBoolean;
+        type: z.ZodEnum<["CREATE_TABLE", "ALTER_TABLE", "DROP_TABLE", "CREATE_INDEX", "DROP_INDEX", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "OTHER"]>;
+        isDestructive: z.ZodBoolean;
+        warnings: z.ZodArray<z.ZodString, "many">;
+        estimatedRowsAffected: z.ZodOptional<z.ZodNumber>;
+        success: z.ZodOptional<z.ZodBoolean>;
         error: z.ZodOptional<z.ZodString>;
-        durationMs: z.ZodNumber;
+        durationMs: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
-        success: boolean;
-        durationMs: number;
+        type: "CREATE_TABLE" | "ALTER_TABLE" | "DROP_TABLE" | "CREATE_INDEX" | "DROP_INDEX" | "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "OTHER";
+        index: number;
+        warnings: string[];
         sql: string;
+        isDestructive: boolean;
         error?: string | undefined;
+        success?: boolean | undefined;
+        durationMs?: number | undefined;
+        estimatedRowsAffected?: number | undefined;
     }, {
-        success: boolean;
-        durationMs: number;
+        type: "CREATE_TABLE" | "ALTER_TABLE" | "DROP_TABLE" | "CREATE_INDEX" | "DROP_INDEX" | "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "OTHER";
+        index: number;
+        warnings: string[];
         sql: string;
+        isDestructive: boolean;
         error?: string | undefined;
+        success?: boolean | undefined;
+        durationMs?: number | undefined;
+        estimatedRowsAffected?: number | undefined;
     }>, "many">;
-    errors: z.ZodArray<z.ZodString, "many">;
+    destructiveStatements: z.ZodNumber;
     warnings: z.ZodArray<z.ZodString, "many">;
-    totalDurationMs: z.ZodNumber;
+    simulatedAt: z.ZodString;
+    error: z.ZodOptional<z.ZodString>;
+    mode: z.ZodOptional<z.ZodEnum<["static", "shadow", "live"]>>;
 }, "strip", z.ZodTypeAny, {
-    success: boolean;
     migrationName: string;
     warnings: string[];
-    appliedStatements: {
-        success: boolean;
-        durationMs: number;
+    verification: "executed" | "static-analysis" | "not-verified";
+    outcome: "unknown" | "success" | "failure";
+    statements: {
+        type: "CREATE_TABLE" | "ALTER_TABLE" | "DROP_TABLE" | "CREATE_INDEX" | "DROP_INDEX" | "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "OTHER";
+        index: number;
+        warnings: string[];
         sql: string;
+        isDestructive: boolean;
         error?: string | undefined;
+        success?: boolean | undefined;
+        durationMs?: number | undefined;
+        estimatedRowsAffected?: number | undefined;
     }[];
-    errors: string[];
-    totalDurationMs: number;
+    destructiveStatements: number;
+    simulatedAt: string;
+    error?: string | undefined;
+    mode?: "static" | "shadow" | "live" | undefined;
 }, {
-    success: boolean;
     migrationName: string;
     warnings: string[];
-    appliedStatements: {
-        success: boolean;
-        durationMs: number;
+    verification: "executed" | "static-analysis" | "not-verified";
+    outcome: "unknown" | "success" | "failure";
+    statements: {
+        type: "CREATE_TABLE" | "ALTER_TABLE" | "DROP_TABLE" | "CREATE_INDEX" | "DROP_INDEX" | "INSERT" | "UPDATE" | "DELETE" | "TRUNCATE" | "OTHER";
+        index: number;
+        warnings: string[];
         sql: string;
+        isDestructive: boolean;
         error?: string | undefined;
+        success?: boolean | undefined;
+        durationMs?: number | undefined;
+        estimatedRowsAffected?: number | undefined;
     }[];
-    errors: string[];
-    totalDurationMs: number;
+    destructiveStatements: number;
+    simulatedAt: string;
+    error?: string | undefined;
+    mode?: "static" | "shadow" | "live" | undefined;
 }>;
 declare const DriftRecoverySuggestionSchema: z.ZodObject<{
     driftItem: z.ZodObject<{
         sql: z.ZodString;
         type: z.ZodEnum<["table-missing", "table-extra", "column-mismatch", "index-change", "constraint-change", "unknown", "missing_migration", "extra_column", "extra_table", "modified_migration"]>;
         description: z.ZodString;
+        identifier: z.ZodOptional<z.ZodString>;
+        migrationName: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     }, {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     }>;
-    strategy: z.ZodEnum<["fix-migration", "revert-manual", "sync-history"]>;
-    sql: z.ZodOptional<z.ZodString>;
+    strategy: z.ZodEnum<["reconcile_history", "manual_migration", "manual_sql", "review_only"]>;
     description: z.ZodString;
-    isDestructive: z.ZodBoolean;
+    sql: z.ZodOptional<z.ZodString>;
+    automated: z.ZodDefault<z.ZodLiteral<false>>;
+    risk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+    warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     description: string;
+    automated: false;
+    warnings: string[];
     driftItem: {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     };
-    strategy: "fix-migration" | "revert-manual" | "sync-history";
-    isDestructive: boolean;
+    strategy: "reconcile_history" | "manual_migration" | "manual_sql" | "review_only";
+    risk: "low" | "medium" | "high" | "critical";
     sql?: string | undefined;
 }, {
     description: string;
     driftItem: {
-        type: "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "unknown" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+        type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
         description: string;
         sql: string;
+        migrationName?: string | undefined;
+        identifier?: string | undefined;
     };
-    strategy: "fix-migration" | "revert-manual" | "sync-history";
-    isDestructive: boolean;
+    strategy: "reconcile_history" | "manual_migration" | "manual_sql" | "review_only";
+    risk: "low" | "medium" | "high" | "critical";
+    automated?: false | undefined;
+    warnings?: string[] | undefined;
     sql?: string | undefined;
 }>;
+declare const DriftRepairPlanSchema: z.ZodObject<{
+    generatedAt: z.ZodString;
+    driftCount: z.ZodNumber;
+    suggestions: z.ZodArray<z.ZodObject<{
+        driftItem: z.ZodObject<{
+            sql: z.ZodString;
+            type: z.ZodEnum<["table-missing", "table-extra", "column-mismatch", "index-change", "constraint-change", "unknown", "missing_migration", "extra_column", "extra_table", "modified_migration"]>;
+            description: z.ZodString;
+            identifier: z.ZodOptional<z.ZodString>;
+            migrationName: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+            description: string;
+            sql: string;
+            migrationName?: string | undefined;
+            identifier?: string | undefined;
+        }, {
+            type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+            description: string;
+            sql: string;
+            migrationName?: string | undefined;
+            identifier?: string | undefined;
+        }>;
+        strategy: z.ZodEnum<["reconcile_history", "manual_migration", "manual_sql", "review_only"]>;
+        description: z.ZodString;
+        sql: z.ZodOptional<z.ZodString>;
+        automated: z.ZodDefault<z.ZodLiteral<false>>;
+        risk: z.ZodEnum<["low", "medium", "high", "critical"]>;
+        warnings: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        description: string;
+        automated: false;
+        warnings: string[];
+        driftItem: {
+            type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+            description: string;
+            sql: string;
+            migrationName?: string | undefined;
+            identifier?: string | undefined;
+        };
+        strategy: "reconcile_history" | "manual_migration" | "manual_sql" | "review_only";
+        risk: "low" | "medium" | "high" | "critical";
+        sql?: string | undefined;
+    }, {
+        description: string;
+        driftItem: {
+            type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+            description: string;
+            sql: string;
+            migrationName?: string | undefined;
+            identifier?: string | undefined;
+        };
+        strategy: "reconcile_history" | "manual_migration" | "manual_sql" | "review_only";
+        risk: "low" | "medium" | "high" | "critical";
+        automated?: false | undefined;
+        warnings?: string[] | undefined;
+        sql?: string | undefined;
+    }>, "many">;
+    isMutatingDisabled: z.ZodDefault<z.ZodLiteral<true>>;
+}, "strip", z.ZodTypeAny, {
+    generatedAt: string;
+    driftCount: number;
+    suggestions: {
+        description: string;
+        automated: false;
+        warnings: string[];
+        driftItem: {
+            type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+            description: string;
+            sql: string;
+            migrationName?: string | undefined;
+            identifier?: string | undefined;
+        };
+        strategy: "reconcile_history" | "manual_migration" | "manual_sql" | "review_only";
+        risk: "low" | "medium" | "high" | "critical";
+        sql?: string | undefined;
+    }[];
+    isMutatingDisabled: true;
+}, {
+    generatedAt: string;
+    driftCount: number;
+    suggestions: {
+        description: string;
+        driftItem: {
+            type: "unknown" | "table-missing" | "table-extra" | "column-mismatch" | "index-change" | "constraint-change" | "missing_migration" | "extra_column" | "extra_table" | "modified_migration";
+            description: string;
+            sql: string;
+            migrationName?: string | undefined;
+            identifier?: string | undefined;
+        };
+        strategy: "reconcile_history" | "manual_migration" | "manual_sql" | "review_only";
+        risk: "low" | "medium" | "high" | "critical";
+        automated?: false | undefined;
+        warnings?: string[] | undefined;
+        sql?: string | undefined;
+    }[];
+    isMutatingDisabled?: true | undefined;
+}>;
 declare const SchemaDiffSchema: z.ZodObject<{
-    type: z.ZodEnum<["added", "removed", "modified"]>;
-    entity: z.ZodString;
+    type: z.ZodEnum<["model_added", "model_removed", "field_added", "field_removed", "field_type_changed", "added", "removed", "modified"]>;
+    modelName: z.ZodOptional<z.ZodString>;
+    fieldName: z.ZodOptional<z.ZodString>;
+    oldType: z.ZodOptional<z.ZodString>;
+    newType: z.ZodOptional<z.ZodString>;
+    description: z.ZodString;
+    breaking: z.ZodBoolean;
+    entity: z.ZodOptional<z.ZodString>;
     field: z.ZodOptional<z.ZodString>;
     before: z.ZodOptional<z.ZodString>;
     after: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    type: "added" | "removed" | "modified";
-    entity: string;
+    type: "model_added" | "model_removed" | "field_added" | "field_removed" | "field_type_changed" | "added" | "removed" | "modified";
+    description: string;
+    breaking: boolean;
+    modelName?: string | undefined;
+    fieldName?: string | undefined;
+    oldType?: string | undefined;
+    newType?: string | undefined;
+    entity?: string | undefined;
     field?: string | undefined;
     before?: string | undefined;
     after?: string | undefined;
 }, {
-    type: "added" | "removed" | "modified";
-    entity: string;
+    type: "model_added" | "model_removed" | "field_added" | "field_removed" | "field_type_changed" | "added" | "removed" | "modified";
+    description: string;
+    breaking: boolean;
+    modelName?: string | undefined;
+    fieldName?: string | undefined;
+    oldType?: string | undefined;
+    newType?: string | undefined;
+    entity?: string | undefined;
     field?: string | undefined;
     before?: string | undefined;
     after?: string | undefined;
 }>;
 declare const MigrationHistoryDiffSchema: z.ZodObject<{
+    sourceEnv: z.ZodString;
+    targetEnv: z.ZodString;
+    sourceApplied: z.ZodNumber;
+    targetApplied: z.ZodNumber;
+    onlyInSource: z.ZodArray<z.ZodString, "many">;
+    onlyInTarget: z.ZodArray<z.ZodString, "many">;
+    divergencePoint: z.ZodOptional<z.ZodString>;
+    inSync: z.ZodBoolean;
+    name: z.ZodOptional<z.ZodString>;
+    presentInSource: z.ZodOptional<z.ZodBoolean>;
+    presentInTarget: z.ZodOptional<z.ZodBoolean>;
+    statusInSource: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed", "unknown"]>>;
+    statusInTarget: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed", "unknown"]>>;
+}, "strip", z.ZodTypeAny, {
+    sourceEnv: string;
+    targetEnv: string;
+    sourceApplied: number;
+    targetApplied: number;
+    onlyInSource: string[];
+    onlyInTarget: string[];
+    inSync: boolean;
+    name?: string | undefined;
+    divergencePoint?: string | undefined;
+    presentInSource?: boolean | undefined;
+    presentInTarget?: boolean | undefined;
+    statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+}, {
+    sourceEnv: string;
+    targetEnv: string;
+    sourceApplied: number;
+    targetApplied: number;
+    onlyInSource: string[];
+    onlyInTarget: string[];
+    inSync: boolean;
+    name?: string | undefined;
+    divergencePoint?: string | undefined;
+    presentInSource?: boolean | undefined;
+    presentInTarget?: boolean | undefined;
+    statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+}>;
+declare const EnvironmentComparisonEntrySchema: z.ZodObject<{
     name: z.ZodString;
-    presentInSource: z.ZodBoolean;
-    presentInTarget: z.ZodBoolean;
-    statusInSource: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed"]>>;
-    statusInTarget: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed"]>>;
+    reachable: z.ZodBoolean;
+    appliedCount: z.ZodNumber;
+    pendingCount: z.ZodNumber;
+    failedCount: z.ZodNumber;
 }, "strip", z.ZodTypeAny, {
     name: string;
-    presentInSource: boolean;
-    presentInTarget: boolean;
-    statusInSource?: "applied" | "pending" | "failed" | undefined;
-    statusInTarget?: "applied" | "pending" | "failed" | undefined;
+    reachable: boolean;
+    appliedCount: number;
+    pendingCount: number;
+    failedCount: number;
 }, {
     name: string;
-    presentInSource: boolean;
-    presentInTarget: boolean;
-    statusInSource?: "applied" | "pending" | "failed" | undefined;
-    statusInTarget?: "applied" | "pending" | "failed" | undefined;
+    reachable: boolean;
+    appliedCount: number;
+    pendingCount: number;
+    failedCount: number;
 }>;
 declare const EnvironmentComparisonSchema: z.ZodObject<{
-    source: z.ZodString;
-    target: z.ZodString;
-    schemaDiffs: z.ZodArray<z.ZodObject<{
-        type: z.ZodEnum<["added", "removed", "modified"]>;
-        entity: z.ZodString;
+    referenceEnv: z.ZodString;
+    environments: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        reachable: z.ZodBoolean;
+        appliedCount: z.ZodNumber;
+        pendingCount: z.ZodNumber;
+        failedCount: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        reachable: boolean;
+        appliedCount: number;
+        pendingCount: number;
+        failedCount: number;
+    }, {
+        name: string;
+        reachable: boolean;
+        appliedCount: number;
+        pendingCount: number;
+        failedCount: number;
+    }>, "many">;
+    diffs: z.ZodArray<z.ZodObject<{
+        sourceEnv: z.ZodString;
+        targetEnv: z.ZodString;
+        sourceApplied: z.ZodNumber;
+        targetApplied: z.ZodNumber;
+        onlyInSource: z.ZodArray<z.ZodString, "many">;
+        onlyInTarget: z.ZodArray<z.ZodString, "many">;
+        divergencePoint: z.ZodOptional<z.ZodString>;
+        inSync: z.ZodBoolean;
+        name: z.ZodOptional<z.ZodString>;
+        presentInSource: z.ZodOptional<z.ZodBoolean>;
+        presentInTarget: z.ZodOptional<z.ZodBoolean>;
+        statusInSource: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed", "unknown"]>>;
+        statusInTarget: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed", "unknown"]>>;
+    }, "strip", z.ZodTypeAny, {
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }, {
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }>, "many">;
+    allInSync: z.ZodBoolean;
+    comparedAt: z.ZodString;
+    source: z.ZodOptional<z.ZodString>;
+    target: z.ZodOptional<z.ZodString>;
+    schemaDiffs: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        type: z.ZodEnum<["model_added", "model_removed", "field_added", "field_removed", "field_type_changed", "added", "removed", "modified"]>;
+        modelName: z.ZodOptional<z.ZodString>;
+        fieldName: z.ZodOptional<z.ZodString>;
+        oldType: z.ZodOptional<z.ZodString>;
+        newType: z.ZodOptional<z.ZodString>;
+        description: z.ZodString;
+        breaking: z.ZodBoolean;
+        entity: z.ZodOptional<z.ZodString>;
         field: z.ZodOptional<z.ZodString>;
         before: z.ZodOptional<z.ZodString>;
         after: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
-        type: "added" | "removed" | "modified";
-        entity: string;
+        type: "model_added" | "model_removed" | "field_added" | "field_removed" | "field_type_changed" | "added" | "removed" | "modified";
+        description: string;
+        breaking: boolean;
+        modelName?: string | undefined;
+        fieldName?: string | undefined;
+        oldType?: string | undefined;
+        newType?: string | undefined;
+        entity?: string | undefined;
         field?: string | undefined;
         before?: string | undefined;
         after?: string | undefined;
     }, {
-        type: "added" | "removed" | "modified";
-        entity: string;
+        type: "model_added" | "model_removed" | "field_added" | "field_removed" | "field_type_changed" | "added" | "removed" | "modified";
+        description: string;
+        breaking: boolean;
+        modelName?: string | undefined;
+        fieldName?: string | undefined;
+        oldType?: string | undefined;
+        newType?: string | undefined;
+        entity?: string | undefined;
         field?: string | undefined;
         before?: string | undefined;
         after?: string | undefined;
-    }>, "many">;
-    migrationDiffs: z.ZodArray<z.ZodObject<{
-        name: z.ZodString;
-        presentInSource: z.ZodBoolean;
-        presentInTarget: z.ZodBoolean;
-        statusInSource: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed"]>>;
-        statusInTarget: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed"]>>;
+    }>, "many">>;
+    migrationDiffs: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        sourceEnv: z.ZodString;
+        targetEnv: z.ZodString;
+        sourceApplied: z.ZodNumber;
+        targetApplied: z.ZodNumber;
+        onlyInSource: z.ZodArray<z.ZodString, "many">;
+        onlyInTarget: z.ZodArray<z.ZodString, "many">;
+        divergencePoint: z.ZodOptional<z.ZodString>;
+        inSync: z.ZodBoolean;
+        name: z.ZodOptional<z.ZodString>;
+        presentInSource: z.ZodOptional<z.ZodBoolean>;
+        presentInTarget: z.ZodOptional<z.ZodBoolean>;
+        statusInSource: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed", "unknown"]>>;
+        statusInTarget: z.ZodOptional<z.ZodEnum<["applied", "pending", "failed", "unknown"]>>;
     }, "strip", z.ZodTypeAny, {
-        name: string;
-        presentInSource: boolean;
-        presentInTarget: boolean;
-        statusInSource?: "applied" | "pending" | "failed" | undefined;
-        statusInTarget?: "applied" | "pending" | "failed" | undefined;
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
     }, {
-        name: string;
-        presentInSource: boolean;
-        presentInTarget: boolean;
-        statusInSource?: "applied" | "pending" | "failed" | undefined;
-        statusInTarget?: "applied" | "pending" | "failed" | undefined;
-    }>, "many">;
-    comparedAt: z.ZodString;
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }>, "many">>;
 }, "strip", z.ZodTypeAny, {
-    source: string;
-    target: string;
-    schemaDiffs: {
-        type: "added" | "removed" | "modified";
-        entity: string;
+    referenceEnv: string;
+    environments: {
+        name: string;
+        reachable: boolean;
+        appliedCount: number;
+        pendingCount: number;
+        failedCount: number;
+    }[];
+    diffs: {
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }[];
+    allInSync: boolean;
+    comparedAt: string;
+    source?: string | undefined;
+    target?: string | undefined;
+    schemaDiffs?: {
+        type: "model_added" | "model_removed" | "field_added" | "field_removed" | "field_type_changed" | "added" | "removed" | "modified";
+        description: string;
+        breaking: boolean;
+        modelName?: string | undefined;
+        fieldName?: string | undefined;
+        oldType?: string | undefined;
+        newType?: string | undefined;
+        entity?: string | undefined;
         field?: string | undefined;
         before?: string | undefined;
         after?: string | undefined;
-    }[];
-    migrationDiffs: {
-        name: string;
-        presentInSource: boolean;
-        presentInTarget: boolean;
-        statusInSource?: "applied" | "pending" | "failed" | undefined;
-        statusInTarget?: "applied" | "pending" | "failed" | undefined;
-    }[];
-    comparedAt: string;
+    }[] | undefined;
+    migrationDiffs?: {
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }[] | undefined;
 }, {
-    source: string;
-    target: string;
-    schemaDiffs: {
-        type: "added" | "removed" | "modified";
-        entity: string;
+    referenceEnv: string;
+    environments: {
+        name: string;
+        reachable: boolean;
+        appliedCount: number;
+        pendingCount: number;
+        failedCount: number;
+    }[];
+    diffs: {
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }[];
+    allInSync: boolean;
+    comparedAt: string;
+    source?: string | undefined;
+    target?: string | undefined;
+    schemaDiffs?: {
+        type: "model_added" | "model_removed" | "field_added" | "field_removed" | "field_type_changed" | "added" | "removed" | "modified";
+        description: string;
+        breaking: boolean;
+        modelName?: string | undefined;
+        fieldName?: string | undefined;
+        oldType?: string | undefined;
+        newType?: string | undefined;
+        entity?: string | undefined;
         field?: string | undefined;
         before?: string | undefined;
         after?: string | undefined;
-    }[];
-    migrationDiffs: {
-        name: string;
-        presentInSource: boolean;
-        presentInTarget: boolean;
-        statusInSource?: "applied" | "pending" | "failed" | undefined;
-        statusInTarget?: "applied" | "pending" | "failed" | undefined;
-    }[];
-    comparedAt: string;
+    }[] | undefined;
+    migrationDiffs?: {
+        sourceEnv: string;
+        targetEnv: string;
+        sourceApplied: number;
+        targetApplied: number;
+        onlyInSource: string[];
+        onlyInTarget: string[];
+        inSync: boolean;
+        name?: string | undefined;
+        divergencePoint?: string | undefined;
+        presentInSource?: boolean | undefined;
+        presentInTarget?: boolean | undefined;
+        statusInSource?: "applied" | "pending" | "failed" | "unknown" | undefined;
+        statusInTarget?: "applied" | "pending" | "failed" | "unknown" | undefined;
+    }[] | undefined;
 }>;
 declare const GitMigrationInfoSchema: z.ZodObject<{
     migrationName: z.ZodString;
-    branch: z.ZodString;
+    committed: z.ZodBoolean;
     commitHash: z.ZodOptional<z.ZodString>;
+    commitAuthor: z.ZodOptional<z.ZodString>;
+    commitDate: z.ZodOptional<z.ZodString>;
+    commitMessage: z.ZodOptional<z.ZodString>;
+    branch: z.ZodOptional<z.ZodString>;
     authorName: z.ZodOptional<z.ZodString>;
     committedAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     migrationName: string;
-    branch: string;
+    committed: boolean;
     commitHash?: string | undefined;
+    commitAuthor?: string | undefined;
+    commitDate?: string | undefined;
+    commitMessage?: string | undefined;
+    branch?: string | undefined;
     authorName?: string | undefined;
     committedAt?: string | undefined;
 }, {
     migrationName: string;
-    branch: string;
+    committed: boolean;
     commitHash?: string | undefined;
+    commitAuthor?: string | undefined;
+    commitDate?: string | undefined;
+    commitMessage?: string | undefined;
+    branch?: string | undefined;
     authorName?: string | undefined;
     committedAt?: string | undefined;
 }>;
 declare const MigrationConflictSchema: z.ZodObject<{
-    migrationA: z.ZodString;
-    migrationB: z.ZodString;
-    branches: z.ZodArray<z.ZodString, "many">;
-    conflictType: z.ZodEnum<["timestamp-overlap", "name-conflict", "history-diverge"]>;
+    timestamp: z.ZodString;
+    migrations: z.ZodArray<z.ZodString, "many">;
+    type: z.ZodEnum<["duplicate_timestamp", "timestamp-overlap", "name-conflict", "history-diverge"]>;
     description: z.ZodString;
+    migrationA: z.ZodOptional<z.ZodString>;
+    migrationB: z.ZodOptional<z.ZodString>;
+    branches: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    conflictType: z.ZodOptional<z.ZodEnum<["timestamp-overlap", "name-conflict", "history-diverge"]>>;
 }, "strip", z.ZodTypeAny, {
+    timestamp: string;
+    type: "duplicate_timestamp" | "timestamp-overlap" | "name-conflict" | "history-diverge";
     description: string;
-    migrationA: string;
-    migrationB: string;
-    branches: string[];
-    conflictType: "timestamp-overlap" | "name-conflict" | "history-diverge";
+    migrations: string[];
+    migrationA?: string | undefined;
+    migrationB?: string | undefined;
+    branches?: string[] | undefined;
+    conflictType?: "timestamp-overlap" | "name-conflict" | "history-diverge" | undefined;
 }, {
+    timestamp: string;
+    type: "duplicate_timestamp" | "timestamp-overlap" | "name-conflict" | "history-diverge";
     description: string;
-    migrationA: string;
-    migrationB: string;
-    branches: string[];
-    conflictType: "timestamp-overlap" | "name-conflict" | "history-diverge";
+    migrations: string[];
+    migrationA?: string | undefined;
+    migrationB?: string | undefined;
+    branches?: string[] | undefined;
+    conflictType?: "timestamp-overlap" | "name-conflict" | "history-diverge" | undefined;
+}>;
+declare const AuditActionSchema: z.ZodEnum<["dashboard.start", "status.check", "drift.detect", "drift.repair", "migration.check", "migration.apply", "migration.simulate", "migration.rollback", "migration.inspect", "migration.history", "migration.create", "deployment.plan", "doctor.run", "env.compare", "schema.diff"]>;
+declare const AuditEntrySchema: z.ZodObject<{
+    timestamp: z.ZodString;
+    action: z.ZodEnum<["dashboard.start", "status.check", "drift.detect", "drift.repair", "migration.check", "migration.apply", "migration.simulate", "migration.rollback", "migration.inspect", "migration.history", "migration.create", "deployment.plan", "doctor.run", "env.compare", "schema.diff"]>;
+    cwd: z.ZodString;
+    result: z.ZodEnum<["success", "failure", "warning"]>;
+    detail: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, "strip", z.ZodTypeAny, {
+    timestamp: string;
+    action: "dashboard.start" | "status.check" | "drift.detect" | "drift.repair" | "migration.check" | "migration.apply" | "migration.simulate" | "migration.rollback" | "migration.inspect" | "migration.history" | "migration.create" | "deployment.plan" | "doctor.run" | "env.compare" | "schema.diff";
+    cwd: string;
+    result: "success" | "failure" | "warning";
+    detail?: Record<string, unknown> | undefined;
+}, {
+    timestamp: string;
+    action: "dashboard.start" | "status.check" | "drift.detect" | "drift.repair" | "migration.check" | "migration.apply" | "migration.simulate" | "migration.rollback" | "migration.inspect" | "migration.history" | "migration.create" | "deployment.plan" | "doctor.run" | "env.compare" | "schema.diff";
+    cwd: string;
+    result: "success" | "failure" | "warning";
+    detail?: Record<string, unknown> | undefined;
 }>;
 declare const PaginationQuerySchema: z.ZodObject<{
     page: z.ZodDefault<z.ZodNumber>;
@@ -1602,7 +1821,22 @@ declare const PaginationQuerySchema: z.ZodObject<{
     page?: number | undefined;
     limit?: number | undefined;
 }>;
-declare const WebhookEventSchema: z.ZodEnum<["drift-detected", "migration-failed", "check-complete", "migration-applied", "simulation-complete", "risk-threshold-exceeded"]>;
+declare const PaginationMetaSchema: z.ZodObject<{
+    page: z.ZodNumber;
+    limit: z.ZodNumber;
+    total: z.ZodNumber;
+    pages: z.ZodNumber;
+}, "strip", z.ZodTypeAny, {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+}, {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+}>;
 declare const WebhookConfigSchema: z.ZodObject<{
     type: z.ZodEnum<["slack", "discord", "http"]>;
     url: z.ZodString;
@@ -1712,6 +1946,10 @@ declare const PrismaFlowConfigSchema: z.ZodObject<{
     auditLogMaxMb: z.ZodDefault<z.ZodNumber>;
     riskThreshold: z.ZodDefault<z.ZodEnum<["low", "medium", "high", "critical"]>>;
 }, "strip", z.ZodTypeAny, {
+    environments: {
+        name: string;
+        databaseUrl: string;
+    }[];
     port: number;
     logLevel: "error" | "trace" | "debug" | "info" | "warn";
     openBrowser: boolean;
@@ -1730,13 +1968,13 @@ declare const PrismaFlowConfigSchema: z.ZodObject<{
         url: string;
         events?: ("drift-detected" | "migration-failed" | "check-complete" | "migration-applied" | "simulation-complete" | "risk-threshold-exceeded")[] | undefined;
     }[];
-    environments: {
-        name: string;
-        databaseUrl: string;
-    }[];
     auditLogMaxMb: number;
     riskThreshold: "low" | "medium" | "high" | "critical";
 }, {
+    environments?: {
+        name: string;
+        databaseUrl: string;
+    }[] | undefined;
     port?: number | undefined;
     logLevel?: "error" | "trace" | "debug" | "info" | "warn" | undefined;
     openBrowser?: boolean | undefined;
@@ -1755,124 +1993,430 @@ declare const PrismaFlowConfigSchema: z.ZodObject<{
         url: string;
         events?: ("drift-detected" | "migration-failed" | "check-complete" | "migration-applied" | "simulation-complete" | "risk-threshold-exceeded")[] | undefined;
     }[] | undefined;
-    environments?: {
-        name: string;
-        databaseUrl: string;
-    }[] | undefined;
     auditLogMaxMb?: number | undefined;
     riskThreshold?: "low" | "medium" | "high" | "critical" | undefined;
 }>;
+declare const SSEEventTypeSchema: z.ZodEnum<["status-update", "drift-detected", "drift-resolved", "migration-applied", "migration-failed", "simulation-progress", "simulation-complete", "repair-progress", "repair-complete"]>;
+declare const SSEEventSchema: z.ZodObject<{
+    type: z.ZodEnum<["status-update", "drift-detected", "drift-resolved", "migration-applied", "migration-failed", "simulation-progress", "simulation-complete", "repair-progress", "repair-complete"]>;
+    data: z.ZodUnknown;
+    timestamp: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    timestamp: string;
+    type: "drift-detected" | "migration-failed" | "migration-applied" | "simulation-complete" | "status-update" | "drift-resolved" | "simulation-progress" | "repair-progress" | "repair-complete";
+    data?: unknown;
+}, {
+    timestamp: string;
+    type: "drift-detected" | "migration-failed" | "migration-applied" | "simulation-complete" | "status-update" | "drift-resolved" | "simulation-progress" | "repair-progress" | "repair-complete";
+    data?: unknown;
+}>;
+declare const SchemaFieldSchema: z.ZodObject<{
+    name: z.ZodString;
+    type: z.ZodString;
+    kind: z.ZodString;
+    isId: z.ZodBoolean;
+    isRequired: z.ZodBoolean;
+    isList: z.ZodBoolean;
+    isUnique: z.ZodBoolean;
+    hasDefaultValue: z.ZodBoolean;
+    default: z.ZodOptional<z.ZodUnknown>;
+    relationName: z.ZodOptional<z.ZodString>;
+    relationFromFields: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    relationToFields: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    type: string;
+    kind: string;
+    isId: boolean;
+    isRequired: boolean;
+    isList: boolean;
+    isUnique: boolean;
+    hasDefaultValue: boolean;
+    default?: unknown;
+    relationName?: string | undefined;
+    relationFromFields?: string[] | undefined;
+    relationToFields?: string[] | undefined;
+}, {
+    name: string;
+    type: string;
+    kind: string;
+    isId: boolean;
+    isRequired: boolean;
+    isList: boolean;
+    isUnique: boolean;
+    hasDefaultValue: boolean;
+    default?: unknown;
+    relationName?: string | undefined;
+    relationFromFields?: string[] | undefined;
+    relationToFields?: string[] | undefined;
+}>;
+declare const SchemaModelSchema: z.ZodObject<{
+    name: z.ZodString;
+    dbName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    fields: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        type: z.ZodString;
+        kind: z.ZodString;
+        isId: z.ZodBoolean;
+        isRequired: z.ZodBoolean;
+        isList: z.ZodBoolean;
+        isUnique: z.ZodBoolean;
+        hasDefaultValue: z.ZodBoolean;
+        default: z.ZodOptional<z.ZodUnknown>;
+        relationName: z.ZodOptional<z.ZodString>;
+        relationFromFields: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        relationToFields: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        type: string;
+        kind: string;
+        isId: boolean;
+        isRequired: boolean;
+        isList: boolean;
+        isUnique: boolean;
+        hasDefaultValue: boolean;
+        default?: unknown;
+        relationName?: string | undefined;
+        relationFromFields?: string[] | undefined;
+        relationToFields?: string[] | undefined;
+    }, {
+        name: string;
+        type: string;
+        kind: string;
+        isId: boolean;
+        isRequired: boolean;
+        isList: boolean;
+        isUnique: boolean;
+        hasDefaultValue: boolean;
+        default?: unknown;
+        relationName?: string | undefined;
+        relationFromFields?: string[] | undefined;
+        relationToFields?: string[] | undefined;
+    }>, "many">;
+    primaryKey: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
+    uniqueFields: z.ZodOptional<z.ZodArray<z.ZodArray<z.ZodString, "many">, "many">>;
+    uniqueIndexes: z.ZodOptional<z.ZodArray<z.ZodUnknown, "many">>;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    fields: {
+        name: string;
+        type: string;
+        kind: string;
+        isId: boolean;
+        isRequired: boolean;
+        isList: boolean;
+        isUnique: boolean;
+        hasDefaultValue: boolean;
+        default?: unknown;
+        relationName?: string | undefined;
+        relationFromFields?: string[] | undefined;
+        relationToFields?: string[] | undefined;
+    }[];
+    dbName?: string | null | undefined;
+    primaryKey?: unknown;
+    uniqueFields?: string[][] | undefined;
+    uniqueIndexes?: unknown[] | undefined;
+}, {
+    name: string;
+    fields: {
+        name: string;
+        type: string;
+        kind: string;
+        isId: boolean;
+        isRequired: boolean;
+        isList: boolean;
+        isUnique: boolean;
+        hasDefaultValue: boolean;
+        default?: unknown;
+        relationName?: string | undefined;
+        relationFromFields?: string[] | undefined;
+        relationToFields?: string[] | undefined;
+    }[];
+    dbName?: string | null | undefined;
+    primaryKey?: unknown;
+    uniqueFields?: string[][] | undefined;
+    uniqueIndexes?: unknown[] | undefined;
+}>;
+declare const SchemaEnumSchema: z.ZodObject<{
+    name: z.ZodString;
+    values: z.ZodArray<z.ZodUnion<[z.ZodString, z.ZodObject<{
+        name: z.ZodString;
+        dbName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        dbName?: string | null | undefined;
+    }, {
+        name: string;
+        dbName?: string | null | undefined;
+    }>]>, "many">;
+}, "strip", z.ZodTypeAny, {
+    name: string;
+    values: (string | {
+        name: string;
+        dbName?: string | null | undefined;
+    })[];
+}, {
+    name: string;
+    values: (string | {
+        name: string;
+        dbName?: string | null | undefined;
+    })[];
+}>;
+declare const SchemaDatamodelSchema: z.ZodObject<{
+    models: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        dbName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        fields: z.ZodArray<z.ZodObject<{
+            name: z.ZodString;
+            type: z.ZodString;
+            kind: z.ZodString;
+            isId: z.ZodBoolean;
+            isRequired: z.ZodBoolean;
+            isList: z.ZodBoolean;
+            isUnique: z.ZodBoolean;
+            hasDefaultValue: z.ZodBoolean;
+            default: z.ZodOptional<z.ZodUnknown>;
+            relationName: z.ZodOptional<z.ZodString>;
+            relationFromFields: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+            relationToFields: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            type: string;
+            kind: string;
+            isId: boolean;
+            isRequired: boolean;
+            isList: boolean;
+            isUnique: boolean;
+            hasDefaultValue: boolean;
+            default?: unknown;
+            relationName?: string | undefined;
+            relationFromFields?: string[] | undefined;
+            relationToFields?: string[] | undefined;
+        }, {
+            name: string;
+            type: string;
+            kind: string;
+            isId: boolean;
+            isRequired: boolean;
+            isList: boolean;
+            isUnique: boolean;
+            hasDefaultValue: boolean;
+            default?: unknown;
+            relationName?: string | undefined;
+            relationFromFields?: string[] | undefined;
+            relationToFields?: string[] | undefined;
+        }>, "many">;
+        primaryKey: z.ZodOptional<z.ZodNullable<z.ZodUnknown>>;
+        uniqueFields: z.ZodOptional<z.ZodArray<z.ZodArray<z.ZodString, "many">, "many">>;
+        uniqueIndexes: z.ZodOptional<z.ZodArray<z.ZodUnknown, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        fields: {
+            name: string;
+            type: string;
+            kind: string;
+            isId: boolean;
+            isRequired: boolean;
+            isList: boolean;
+            isUnique: boolean;
+            hasDefaultValue: boolean;
+            default?: unknown;
+            relationName?: string | undefined;
+            relationFromFields?: string[] | undefined;
+            relationToFields?: string[] | undefined;
+        }[];
+        dbName?: string | null | undefined;
+        primaryKey?: unknown;
+        uniqueFields?: string[][] | undefined;
+        uniqueIndexes?: unknown[] | undefined;
+    }, {
+        name: string;
+        fields: {
+            name: string;
+            type: string;
+            kind: string;
+            isId: boolean;
+            isRequired: boolean;
+            isList: boolean;
+            isUnique: boolean;
+            hasDefaultValue: boolean;
+            default?: unknown;
+            relationName?: string | undefined;
+            relationFromFields?: string[] | undefined;
+            relationToFields?: string[] | undefined;
+        }[];
+        dbName?: string | null | undefined;
+        primaryKey?: unknown;
+        uniqueFields?: string[][] | undefined;
+        uniqueIndexes?: unknown[] | undefined;
+    }>, "many">;
+    enums: z.ZodArray<z.ZodObject<{
+        name: z.ZodString;
+        values: z.ZodArray<z.ZodUnion<[z.ZodString, z.ZodObject<{
+            name: z.ZodString;
+            dbName: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        }, "strip", z.ZodTypeAny, {
+            name: string;
+            dbName?: string | null | undefined;
+        }, {
+            name: string;
+            dbName?: string | null | undefined;
+        }>]>, "many">;
+    }, "strip", z.ZodTypeAny, {
+        name: string;
+        values: (string | {
+            name: string;
+            dbName?: string | null | undefined;
+        })[];
+    }, {
+        name: string;
+        values: (string | {
+            name: string;
+            dbName?: string | null | undefined;
+        })[];
+    }>, "many">;
+    types: z.ZodOptional<z.ZodArray<z.ZodUnknown, "many">>;
+}, "strip", z.ZodTypeAny, {
+    models: {
+        name: string;
+        fields: {
+            name: string;
+            type: string;
+            kind: string;
+            isId: boolean;
+            isRequired: boolean;
+            isList: boolean;
+            isUnique: boolean;
+            hasDefaultValue: boolean;
+            default?: unknown;
+            relationName?: string | undefined;
+            relationFromFields?: string[] | undefined;
+            relationToFields?: string[] | undefined;
+        }[];
+        dbName?: string | null | undefined;
+        primaryKey?: unknown;
+        uniqueFields?: string[][] | undefined;
+        uniqueIndexes?: unknown[] | undefined;
+    }[];
+    enums: {
+        name: string;
+        values: (string | {
+            name: string;
+            dbName?: string | null | undefined;
+        })[];
+    }[];
+    types?: unknown[] | undefined;
+}, {
+    models: {
+        name: string;
+        fields: {
+            name: string;
+            type: string;
+            kind: string;
+            isId: boolean;
+            isRequired: boolean;
+            isList: boolean;
+            isUnique: boolean;
+            hasDefaultValue: boolean;
+            default?: unknown;
+            relationName?: string | undefined;
+            relationFromFields?: string[] | undefined;
+            relationToFields?: string[] | undefined;
+        }[];
+        dbName?: string | null | undefined;
+        primaryKey?: unknown;
+        uniqueFields?: string[][] | undefined;
+        uniqueIndexes?: unknown[] | undefined;
+    }[];
+    enums: {
+        name: string;
+        values: (string | {
+            name: string;
+            dbName?: string | null | undefined;
+        })[];
+    }[];
+    types?: unknown[] | undefined;
+}>;
+
+type MigrationStatus = z.infer<typeof MigrationStatusSchema>;
+type MigrationVerificationStatus = z.infer<typeof MigrationVerificationStatusSchema>;
+type RiskLevel = z.infer<typeof RiskLevelSchema>;
+type DriftType = z.infer<typeof DriftTypeSchema>;
+type DriftDetectionStatus = z.infer<typeof DriftDetectionStatusSchema>;
+type DriftRepairStrategy = z.infer<typeof DriftRepairStrategySchema>;
+type LogLevel = z.infer<typeof LogLevelSchema>;
+type WebhookType = z.infer<typeof WebhookTypeSchema>;
+type WebhookEvent = z.infer<typeof WebhookEventSchema>;
+type DatabaseProvider = z.infer<typeof DatabaseProviderSchema>;
+type SchemaDiffType = z.infer<typeof SchemaDiffTypeSchema>;
+type SimulationVerification = z.infer<typeof SimulationVerificationSchema>;
+type SimulationOutcome = z.infer<typeof SimulationOutcomeSchema>;
+type SimulationMode = z.infer<typeof SimulationModeSchema>;
+type SimulationStatementType = z.infer<typeof SimulationStatementTypeSchema>;
+type DeploymentReadinessStatus = z.infer<typeof DeploymentReadinessStatusSchema>;
+type DeploymentReadinessCheckId = z.infer<typeof DeploymentReadinessCheckIdSchema>;
+type DeploymentPlanPriority = z.infer<typeof DeploymentPlanPrioritySchema>;
+type DeploymentPlanDecision = DeploymentReadinessStatus;
+type Migration = z.infer<typeof MigrationSchema>;
+type RiskFactor = z.infer<typeof RiskFactorSchema>;
+type MigrationRiskScore = z.infer<typeof MigrationRiskScoreSchema>;
+type RollbackStep = z.infer<typeof RollbackStepSchema>;
+type RollbackPlan = z.infer<typeof RollbackPlanSchema>;
+type MigrationDetail = z.infer<typeof MigrationDetailSchema>;
+type DriftItem = z.infer<typeof DriftItemSchema>;
+type DriftResult = z.infer<typeof DriftResultSchema>;
+type DeploymentReadinessCheck = z.infer<typeof DeploymentReadinessCheckSchema>;
+type DeploymentReadiness = z.infer<typeof DeploymentReadinessSchema>;
+type DeploymentPlanAction = z.infer<typeof DeploymentPlanActionSchema>;
+type DeploymentPlanCommand = z.infer<typeof DeploymentPlanCommandSchema>;
+type DeploymentPlanMigrationSummary = z.infer<typeof DeploymentPlanMigrationSummarySchema>;
+type DeploymentPlanDriftSummary = z.infer<typeof DeploymentPlanDriftSummarySchema>;
+type DeploymentPlan = z.infer<typeof DeploymentPlanSchema>;
+type ProjectStatus = z.infer<typeof ProjectStatusSchema>;
+type SimulationStatement = z.infer<typeof SimulationStatementSchema>;
+type SimulationResult = z.infer<typeof SimulationResultSchema>;
+type DriftRecoverySuggestion = z.infer<typeof DriftRecoverySuggestionSchema>;
+type DriftRepairPlan = z.infer<typeof DriftRepairPlanSchema>;
+type SchemaDiff = z.infer<typeof SchemaDiffSchema>;
+type MigrationHistoryDiff = z.infer<typeof MigrationHistoryDiffSchema>;
+type EnvironmentComparisonEntry = z.infer<typeof EnvironmentComparisonEntrySchema>;
+type EnvironmentComparison = z.infer<typeof EnvironmentComparisonSchema>;
+type GitMigrationInfo = z.infer<typeof GitMigrationInfoSchema>;
+type MigrationConflict = z.infer<typeof MigrationConflictSchema>;
+type AuditAction = z.infer<typeof AuditActionSchema>;
+type AuditEntry = z.infer<typeof AuditEntrySchema>;
+type PaginationQuery = z.infer<typeof PaginationQuerySchema>;
+type PaginationMeta = z.infer<typeof PaginationMetaSchema>;
+type WebhookConfig = z.infer<typeof WebhookConfigSchema>;
+type FeatureFlags = z.infer<typeof FeatureFlagsSchema>;
+type EnvironmentEntry = z.infer<typeof EnvironmentEntrySchema>;
+type PrismaFlowConfig = z.infer<typeof PrismaFlowConfigSchema>;
 type PrismaFlowConfigParsed = z.infer<typeof PrismaFlowConfigSchema>;
-declare const OrganizationSchema: z.ZodObject<{
-    id: z.ZodString;
-    name: z.ZodString;
-    slug: z.ZodString;
-    createdAt: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    name: string;
-    createdAt: string;
-    id: string;
-    slug: string;
-}, {
-    name: string;
-    createdAt: string;
-    id: string;
-    slug: string;
-}>;
-declare const TeamSchema: z.ZodObject<{
-    id: z.ZodString;
-    name: z.ZodString;
-    organizationId: z.ZodString;
-    createdAt: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    name: string;
-    createdAt: string;
-    id: string;
-    organizationId: string;
-}, {
-    name: string;
-    createdAt: string;
-    id: string;
-    organizationId: string;
-}>;
-declare const ProjectSchema: z.ZodObject<{
-    id: z.ZodString;
-    name: z.ZodString;
-    organizationId: z.ZodString;
-    teamId: z.ZodOptional<z.ZodString>;
-    createdAt: z.ZodString;
-    updatedAt: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    name: string;
-    createdAt: string;
-    id: string;
-    organizationId: string;
-    updatedAt: string;
-    teamId?: string | undefined;
-}, {
-    name: string;
-    createdAt: string;
-    id: string;
-    organizationId: string;
-    updatedAt: string;
-    teamId?: string | undefined;
-}>;
-declare const EnvironmentSchema: z.ZodObject<{
-    id: z.ZodString;
-    name: z.ZodString;
-    projectId: z.ZodString;
-    provider: z.ZodEnum<["postgresql", "mysql", "sqlite", "sqlserver", "mongodb"]>;
-    connectionString: z.ZodOptional<z.ZodString>;
-    createdAt: z.ZodString;
-    updatedAt: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    name: string;
-    createdAt: string;
-    id: string;
-    provider: "postgresql" | "mysql" | "sqlite" | "sqlserver" | "mongodb";
-    updatedAt: string;
-    projectId: string;
-    connectionString?: string | undefined;
-}, {
-    name: string;
-    createdAt: string;
-    id: string;
-    provider: "postgresql" | "mysql" | "sqlite" | "sqlserver" | "mongodb";
-    updatedAt: string;
-    projectId: string;
-    connectionString?: string | undefined;
-}>;
-declare const DeploymentEventSchema: z.ZodObject<{
-    id: z.ZodString;
-    projectId: z.ZodString;
-    environmentId: z.ZodString;
-    migrationsApplied: z.ZodArray<z.ZodString, "many">;
-    appliedBy: z.ZodOptional<z.ZodString>;
-    durationMs: z.ZodNumber;
-    success: z.ZodBoolean;
-    error: z.ZodOptional<z.ZodString>;
-    createdAt: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    success: boolean;
-    createdAt: string;
-    durationMs: number;
-    id: string;
-    migrationsApplied: string[];
-    projectId: string;
-    environmentId: string;
-    error?: string | undefined;
-    appliedBy?: string | undefined;
-}, {
-    success: boolean;
-    createdAt: string;
-    durationMs: number;
-    id: string;
-    migrationsApplied: string[];
-    projectId: string;
-    environmentId: string;
-    error?: string | undefined;
-    appliedBy?: string | undefined;
-}>;
+type SSEEventType = z.infer<typeof SSEEventTypeSchema>;
+type SSEEvent<T = unknown> = {
+    type: SSEEventType;
+    data: T;
+    timestamp: string;
+};
+type SchemaField = z.infer<typeof SchemaFieldSchema>;
+type SchemaModel = z.infer<typeof SchemaModelSchema>;
+type SchemaEnum = z.infer<typeof SchemaEnumSchema>;
+type SchemaDatamodel = z.infer<typeof SchemaDatamodelSchema>;
+interface ApiSuccess<T> {
+    success: true;
+    data: T;
+    message?: string;
+}
+interface ApiError {
+    success: false;
+    error: string;
+}
+type ApiResponse<T> = ApiSuccess<T> | ApiError;
+interface PaginatedResponse<T> {
+    success: true;
+    data: T[];
+    pagination: PaginationMeta;
+}
 
 declare class PrismaFlowError extends Error {
     readonly code: string;
@@ -1909,11 +2453,11 @@ declare class EnvironmentComparisonError extends PrismaFlowError {
 declare class GitAwarenessError extends PrismaFlowError {
     constructor(detail: string, cause?: unknown);
 }
-declare class FeatureGatedError extends PrismaFlowError {
-    constructor(feature: string, requiredTier: string);
-}
 declare class DriftRepairError extends PrismaFlowError {
     constructor(detail: string, cause?: unknown);
 }
+declare class UnsupportedPrismaVersionError extends PrismaFlowError {
+    constructor(version: string, detail?: string);
+}
 
-export { type ApiError, type ApiResponse, type ApiSuccess, type AuditAction, type AuditEntry, ConfigurationError, DatabaseConnectionError, type DatabaseProvider, DatabaseProviderSchema, type DeploymentEvent, DeploymentEventSchema, type DeploymentPlan, type DeploymentPlanAction, DeploymentPlanActionSchema, type DeploymentPlanCommand, DeploymentPlanCommandSchema, type DeploymentPlanDecision, type DeploymentPlanDriftSummary, DeploymentPlanDriftSummarySchema, type DeploymentPlanMigrationSummary, DeploymentPlanMigrationSummarySchema, type DeploymentPlanPriority, DeploymentPlanSchema, type DeploymentReadiness, type DeploymentReadinessCheck, DeploymentReadinessCheckSchema, DeploymentReadinessSchema, type DeploymentReadinessStatus, DriftDetectionError, type DriftDetectionStatus, DriftDetectionStatusSchema, type DriftItem, DriftItemSchema, type DriftRecoverySuggestion, DriftRecoverySuggestionSchema, DriftRepairError, type DriftRepairStrategy, DriftRepairStrategySchema, type DriftResult, DriftResultSchema, type DriftType, DriftTypeSchema, type Environment, type EnvironmentComparison, EnvironmentComparisonError, EnvironmentComparisonSchema, type EnvironmentEntry, EnvironmentEntrySchema, EnvironmentSchema, type FeatureFlags, FeatureFlagsSchema, FeatureGatedError, GitAwarenessError, type GitMigrationInfo, GitMigrationInfoSchema, type LogLevel, LogLevelSchema, type Migration, MigrationAnalysisError, type MigrationConflict, MigrationConflictSchema, type MigrationDetail, MigrationDetailSchema, type MigrationHistoryDiff, MigrationHistoryDiffSchema, type MigrationRiskScore, MigrationRiskScoreSchema, MigrationSchema, type MigrationStatus, MigrationStatusSchema, type Organization, OrganizationSchema, type PaginatedResponse, type PaginationMeta, PaginationQuerySchema, type PrismaFlowConfig, type PrismaFlowConfigParsed, PrismaFlowConfigSchema, PrismaFlowError, type Project, ProjectSchema, type ProjectStatus, ProjectStatusSchema, type RiskFactor, RiskFactorSchema, type RiskLevel, RiskLevelSchema, RollbackError, type RollbackPlan, RollbackPlanSchema, type RollbackStep, type SSEEvent, type SSEEventType, type SchemaDiff, SchemaDiffSchema, type SchemaDiffType, SchemaDiffTypeSchema, SchemaNotFoundError, SimulationError, type SimulationMode, type SimulationResult, SimulationResultSchema, type SimulationStatement, SimulationStatementSchema, type Team, TeamSchema, UnauthorizedError, type WebhookConfig, WebhookConfigSchema, type WebhookEvent, WebhookEventSchema, type WebhookType, WebhookTypeSchema };
+export { type ApiError, type ApiResponse, type ApiSuccess, type AuditAction, AuditActionSchema, type AuditEntry, AuditEntrySchema, ConfigurationError, DatabaseConnectionError, type DatabaseProvider, DatabaseProviderSchema, type DeploymentPlan, type DeploymentPlanAction, DeploymentPlanActionSchema, type DeploymentPlanCommand, DeploymentPlanCommandSchema, type DeploymentPlanDecision, type DeploymentPlanDriftSummary, DeploymentPlanDriftSummarySchema, type DeploymentPlanMigrationSummary, DeploymentPlanMigrationSummarySchema, type DeploymentPlanPriority, DeploymentPlanPrioritySchema, DeploymentPlanSchema, type DeploymentReadiness, type DeploymentReadinessCheck, type DeploymentReadinessCheckId, DeploymentReadinessCheckIdSchema, DeploymentReadinessCheckSchema, DeploymentReadinessSchema, type DeploymentReadinessStatus, DeploymentReadinessStatusSchema, DriftDetectionError, type DriftDetectionStatus, DriftDetectionStatusSchema, type DriftItem, DriftItemSchema, type DriftRecoverySuggestion, DriftRecoverySuggestionSchema, DriftRepairError, type DriftRepairPlan, DriftRepairPlanSchema, type DriftRepairStrategy, DriftRepairStrategySchema, type DriftResult, DriftResultSchema, type DriftType, DriftTypeSchema, type EnvironmentComparison, type EnvironmentComparisonEntry, EnvironmentComparisonEntrySchema, EnvironmentComparisonError, EnvironmentComparisonSchema, type EnvironmentEntry, EnvironmentEntrySchema, type FeatureFlags, FeatureFlagsSchema, GitAwarenessError, type GitMigrationInfo, GitMigrationInfoSchema, type LogLevel, LogLevelSchema, type Migration, MigrationAnalysisError, type MigrationConflict, MigrationConflictSchema, type MigrationDetail, MigrationDetailSchema, type MigrationHistoryDiff, MigrationHistoryDiffSchema, type MigrationRiskScore, MigrationRiskScoreSchema, MigrationSchema, type MigrationStatus, MigrationStatusSchema, type MigrationVerificationStatus, MigrationVerificationStatusSchema, type PaginatedResponse, type PaginationMeta, PaginationMetaSchema, type PaginationQuery, PaginationQuerySchema, type PrismaFlowConfig, type PrismaFlowConfigParsed, PrismaFlowConfigSchema, PrismaFlowError, type ProjectStatus, ProjectStatusSchema, type RiskFactor, RiskFactorSchema, type RiskLevel, RiskLevelSchema, RollbackError, type RollbackPlan, RollbackPlanSchema, type RollbackStep, RollbackStepSchema, type SSEEvent, SSEEventSchema, type SSEEventType, SSEEventTypeSchema, type SchemaDatamodel, SchemaDatamodelSchema, type SchemaDiff, SchemaDiffSchema, type SchemaDiffType, SchemaDiffTypeSchema, type SchemaEnum, SchemaEnumSchema, type SchemaField, SchemaFieldSchema, type SchemaModel, SchemaModelSchema, SchemaNotFoundError, SimulationError, type SimulationMode, SimulationModeSchema, type SimulationOutcome, SimulationOutcomeSchema, type SimulationResult, SimulationResultSchema, type SimulationStatement, SimulationStatementSchema, type SimulationStatementType, SimulationStatementTypeSchema, type SimulationVerification, SimulationVerificationSchema, UnauthorizedError, UnsupportedPrismaVersionError, type WebhookConfig, WebhookConfigSchema, type WebhookEvent, WebhookEventSchema, type WebhookType, WebhookTypeSchema };
