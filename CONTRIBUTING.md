@@ -30,7 +30,7 @@ Be respectful and constructive. We follow the
 ### Setup
 
 ```bash
-git clone https://github.com/GitHackerz/prisma-flow.git
+git clone https://github.com/prisma-flow/prisma-flow.git
 cd prisma-flow
 npm install           # installs all workspace packages + sets up Husky hooks
 ```
@@ -195,4 +195,4 @@ npm publish --workspace=packages/cli --otp=<code>
 ## Questions?
 
 Open a support request through the
-[GitHub issue chooser](https://github.com/GitHackerz/prisma-flow/issues/new/choose).
+[GitHub issue chooser](https://github.com/prisma-flow/prisma-flow/issues/new/choose).
