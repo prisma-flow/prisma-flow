@@ -1,9 +1,22 @@
-name: Publish npm packages
+name: Publish release
 
 on:
   pull_request:
     branches: [main]
     types: [closed]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Publish mode: "bootstrap" (initial release before tag exists) or "retry" (re-publish existing tag to npm)'
+        required: true
+        type: choice
+        options:
+          - bootstrap
+          - retry
+      version:
+        description: 'Exact SemVer version to publish (e.g. 0.2.0)'
+        required: true
+        type: string
 
 concurrency:
   group: npm-publish-main
@@ -15,77 +28,122 @@ permissions:
 
 jobs:
   publish:
-    name: Verify and publish new package versions
+    name: Verify and publish prisma-flow
     if: >-
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.user.login == 'github-actions[bot]' &&
-      contains(github.event.pull_request.labels.*.name, 'autorelease: pending')
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.user.login == 'github-actions[bot]' &&
+       contains(github.event.pull_request.labels.*.name, 'autorelease: pending'))
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - name: Checkout repository
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js 22
+      - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: "22.x"
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      - name: Ensure npm 11 for trusted publishing
-        run: npm install -g npm@11
+      - name: Ensure pinned npm 11.8.0 for trusted publishing
+        run: npm install -g npm@11.8.0
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Verify release versions
-        id: version
+      - name: Validate and determine target version
+        id: release-context
         shell: bash
         run: |
           CLI_VERSION="$(node -p "require('./packages/cli/package.json').version")"
-          SHARED_VERSION="$(node -p "require('./packages/shared/package.json').version")"
+          MANIFEST_VERSION="$(node -p "require('./.release-please-manifest.json')['packages/cli']")"
 
-          if [ "$CLI_VERSION" != "$SHARED_VERSION" ]; then
-            echo "The CLI ($CLI_VERSION) and shared package ($SHARED_VERSION) versions must match."
-            exit 1
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            MODE="${{ github.event.inputs.mode }}"
+            REQ_VERSION="${{ github.event.inputs.version }}"
+
+            echo "Manual publish triggered in mode: $MODE for version: $REQ_VERSION"
+
+            if [ "$MODE" = "bootstrap" ]; then
+              if [ "$REQ_VERSION" != "$CLI_VERSION" ]; then
+                echo "Error: Requested version ($REQ_VERSION) does not match packages/cli/package.json ($CLI_VERSION)"
+                exit 1
+              fi
+              if [ "$REQ_VERSION" != "$MANIFEST_VERSION" ]; then
+                echo "Error: Requested version ($REQ_VERSION) does not match .release-please-manifest.json ($MANIFEST_VERSION)"
+                exit 1
+              fi
+              if git rev-parse "v$REQ_VERSION" >/dev/null 2>&1; then
+                echo "Error: Tag v$REQ_VERSION already exists. Use 'retry' mode to publish an existing tag."
+                exit 1
+              fi
+              TARGET_VERSION="$REQ_VERSION"
+              CREATE_RELEASE="true"
+            elif [ "$MODE" = "retry" ]; then
+              if ! git rev-parse "v$REQ_VERSION" >/dev/null 2>&1; then
+                echo "Error: Tag v$REQ_VERSION does not exist. Use 'bootstrap' mode for initial untagged release."
+                exit 1
+              fi
+              echo "Checking out canonical tag v$REQ_VERSION..."
+              git checkout "v$REQ_VERSION"
+              TAG_CLI_VERSION="$(node -p "require('./packages/cli/package.json').version")"
+              if [ "$TAG_CLI_VERSION" != "$REQ_VERSION" ]; then
+                echo "Error: Tag v$REQ_VERSION contains package version $TAG_CLI_VERSION instead of $REQ_VERSION"
+                exit 1
+              fi
+              TARGET_VERSION="$REQ_VERSION"
+              CREATE_RELEASE="false"
+            else
+              echo "Error: Unknown mode $MODE"
+              exit 1
+            fi
+          else
+            # Automated PR trigger
+            if [ "$CLI_VERSION" != "$MANIFEST_VERSION" ]; then
+              echo "Error: CLI version ($CLI_VERSION) does not match release manifest ($MANIFEST_VERSION)"
+              exit 1
+            fi
+            TARGET_VERSION="$CLI_VERSION"
+            CREATE_RELEASE="true"
           fi
 
-          echo "version=$CLI_VERSION" >> "$GITHUB_OUTPUT"
+          echo "target_version=$TARGET_VERSION" >> "$GITHUB_OUTPUT"
+          echo "create_release=$CREATE_RELEASE" >> "$GITHUB_OUTPUT"
 
       - name: Check npm publication status
-        id: npm
+        id: npm-check
         shell: bash
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-
-          if npm view "@prisma-flow/shared@$VERSION" version >/dev/null 2>&1; then
-            echo "publish_shared=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish_shared=true" >> "$GITHUB_OUTPUT"
-          fi
+          VERSION="${{ steps.release-context.outputs.target_version }}"
+          echo "Checking if prisma-flow@$VERSION is already published to npm..."
 
           if npm view "prisma-flow@$VERSION" version >/dev/null 2>&1; then
-            echo "publish_cli=false" >> "$GITHUB_OUTPUT"
+            echo "prisma-flow@$VERSION is already published on npm registry."
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+            if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+              echo "Error: Cannot publish prisma-flow@$VERSION as it already exists on npm."
+              exit 1
+            fi
           else
-            echo "publish_cli=true" >> "$GITHUB_OUTPUT"
+            echo "prisma-flow@$VERSION is not yet published. Ready for publication."
+            echo "should_publish=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Install dependencies
+        run: npm ci
 
       - name: Verify production readiness
         run: npm run verify:release
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-      - name: Publish @prisma-flow/shared to npm (Trusted Publishing)
-        if: steps.npm.outputs.publish_shared == 'true'
-        run: npm publish --workspace=@prisma-flow/shared --provenance --access public
-
       - name: Publish prisma-flow to npm (Trusted Publishing)
-        if: steps.npm.outputs.publish_cli == 'true'
+        if: steps.npm-check.outputs.should_publish == 'true'
         run: npm publish --workspace=prisma-flow --provenance --access public
 
       - name: Generate release notes
-        if: steps.npm.outputs.publish_shared == 'true' || steps.npm.outputs.publish_cli == 'true'
+        if: steps.release-context.outputs.create_release == 'true' && steps.npm-check.outputs.should_publish == 'true'
         run: |
           PREVIOUS_TAG="$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || true)"
           if [ -n "$PREVIOUS_TAG" ]; then
@@ -95,10 +153,10 @@ jobs:
           fi
 
       - name: Create GitHub release
-        if: steps.npm.outputs.publish_shared == 'true' || steps.npm.outputs.publish_cli == 'true'
+        if: steps.release-context.outputs.create_release == 'true' && steps.npm-check.outputs.should_publish == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
+          tag_name: v${{ steps.release-context.outputs.target_version }}
           target_commitish: ${{ github.sha }}
           body_path: release-notes.txt
           files: packages/cli/dist/**
