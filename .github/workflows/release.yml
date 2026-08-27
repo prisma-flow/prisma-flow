@@ -276,7 +276,7 @@ jobs:
           echo "All release artifacts for v$VERSION verified. Reconciling labels on PR #$PR_NUMBER..."
 
           # Ensure autorelease: tagged label exists in repository without overwriting or suppressing errors
-          if ! gh label view "autorelease: tagged" >/dev/null 2>&1; then
+          if ! gh api "repos/${{ github.repository }}/labels/autorelease:%20tagged" >/dev/null 2>&1; then
             echo "Creating missing 'autorelease: tagged' label..."
             gh label create "autorelease: tagged" --color "0e8a16" --description "Release has been tagged"
           else
