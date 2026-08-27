@@ -4,8 +4,10 @@ node_modules
 
 # Build outputs — each stage builds these from source
 **/dist
-packages/dashboard/.next
-packages/dashboard/out
+apps/dashboard/.next
+apps/dashboard/out
+apps/website/.next
+apps/website/out
 packages/cli/public
 
 # Test / coverage artifacts

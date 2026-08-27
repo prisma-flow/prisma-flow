@@ -2,7 +2,7 @@
 
 PrismaFlow V1 is a local-first open-source CLI and dashboard for Prisma migration visibility, schema understanding, drift detection, risk analysis, health scoring, and deployment readiness.
 
-For the public website version of these docs, see `packages/website/app/docs/page.tsx`.
+For the public website version of these docs, see `apps/website/app/docs/page.tsx`.
 
 ## Quick Start
 

@@ -114,7 +114,7 @@ Useful focused commands include:
 
 ```bash
 npm test --workspace=packages/cli
-npm test --workspace=packages/dashboard
+npm test --workspace=apps/dashboard
 ```
 
 When changing migration state, drift detection, readiness, simulation, repair, schema parsing, or Prisma compatibility, include regression tests for failure and unknown states—not only the success path.
@@ -125,11 +125,12 @@ Changes that claim support for a Prisma version or database provider should incl
 
 ```text
 prisma-flow/
+├── apps/
+│   ├── dashboard/     # private Next.js static dashboard bundled into the CLI
+│   └── website/       # private Next.js documentation and marketing site (Vercel)
 ├── packages/
-│   ├── cli/           # prisma-flow npm package, Commander CLI, Hono API
-│   ├── dashboard/     # Next.js static dashboard bundled into the CLI
-│   ├── shared/        # shared TypeScript types, Zod schemas, errors
-│   └── website/       # public website/documentation application
+│   ├── cli/           # the ONLY public npm package (prisma-flow): CLI, Hono API, adapters
+│   └── shared/        # private/internal Zod schemas, derived types, structured errors
 ├── docs/              # architecture, roadmap, product notes
 ├── test-project/      # local Prisma fixture
 └── .github/           # CI, release, security, issue and PR configuration
@@ -147,7 +148,9 @@ Safety-related output must distinguish verified results from heuristics or unkno
 
 ## Releases
 
-Releases are automated with Release Please. Conventional Commits merged into `main` feed the release PR. The release workflow performs the production gate, publishes package versions that do not already exist, and creates the corresponding GitHub release/tag.
+Releases are automated with Release Please for the single public `prisma-flow` package. Conventional Commits merged into `main` feed the release PR. Commits affecting `packages/cli`, `packages/shared`, or `apps/dashboard` trigger version bumps, while `apps/website` and `docs` remain independent.
+
+The release workflow enforces an immutable commit target, establishes the canonical Git tag `v<semver>` prior to publication, publishes to npm with OIDC provenance, and publishes release notes to GitHub Releases.
 
 Do not manually change package versions as part of an ordinary feature or fix PR unless the release process specifically requires it.
 

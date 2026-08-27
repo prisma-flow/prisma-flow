@@ -1,27 +1,37 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "node",
+  "bump-minor-pre-major": true,
+  "include-component-in-tag": false,
   "skip-github-release": true,
   "skip-changelog": true,
   "packages": {
-    "packages/cli": {
+    ".": {
+      "package-name": "prisma-flow",
       "component": "prisma-flow",
-      "package-name": "prisma-flow"
-    },
-    "packages/shared": {
-      "component": "prisma-flow-shared",
-      "package-name": "@prisma-flow/shared"
+      "release-type": "node",
+      "bump-minor-pre-major": true,
+      "include-component-in-tag": false,
+      "skip-github-release": true,
+      "skip-changelog": true,
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "packages/cli/package.json",
+          "jsonpath": "$.version"
+        }
+      ],
+      "exclude-paths": [
+        "apps/website",
+        "docs",
+        ".github",
+        "test-project",
+        "AGENTS.md",
+        "CONTRIBUTING.md",
+        "CODE_OF_CONDUCT.md",
+        "GOVERNANCE.md",
+        "SECURITY.md"
+      ]
     }
-  },
-  "plugins": [
-    {
-      "type": "node-workspace",
-      "merge": false
-    },
-    {
-      "type": "linked-versions",
-      "groupName": "prisma-flow-packages",
-      "components": ["prisma-flow", "prisma-flow-shared"]
-    }
-  ]
+  }
 }
