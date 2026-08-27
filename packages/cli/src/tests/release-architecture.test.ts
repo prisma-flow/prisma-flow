@@ -93,16 +93,35 @@ describe('Release Architecture & Invariants', () => {
     expect(hasCliVersionSync).toBe(true)
   })
 
-  it('enforces publication ordering: tag exists before npm publish', () => {
+  it('enforces publication ordering: tag exists before npm publish, release, and PR label reconciliation', () => {
     const tagStepIndex = releaseWorkflow.indexOf(
       'Ensure canonical Git tag exists before publication',
     )
     const publishStepIndex = releaseWorkflow.indexOf('Publish npm package')
     const ghReleaseStepIndex = releaseWorkflow.indexOf('Reconcile GitHub Release')
+    const prReconciliationStepIndex = releaseWorkflow.indexOf('Reconcile Release PR labels')
 
     expect(tagStepIndex).toBeGreaterThan(-1)
     expect(publishStepIndex).toBeGreaterThan(tagStepIndex)
     expect(ghReleaseStepIndex).toBeGreaterThan(publishStepIndex)
+    expect(prReconciliationStepIndex).toBeGreaterThan(ghReleaseStepIndex)
+  })
+
+  it('enforces least-privilege permissions including PR and issue write scopes for label management', () => {
+    expect(releaseWorkflow).toContain('contents: write')
+    expect(releaseWorkflow).toContain('id-token: write')
+    expect(releaseWorkflow).toContain('pull-requests: write')
+    expect(releaseWorkflow).toContain('issues: write')
+    expect(releaseWorkflow).not.toContain('permissions: write-all')
+  })
+
+  it('enforces Release Please PR label state reconciliation invariants', () => {
+    expect(releaseWorkflow).toContain('github.event.pull_request.number')
+    expect(releaseWorkflow).toContain('--remove-label "autorelease: pending"')
+    expect(releaseWorkflow).toContain('--add-label "autorelease: tagged"')
+    expect(releaseWorkflow).toContain('git rev-parse "v$VERSION"')
+    expect(releaseWorkflow).toContain('npm view "prisma-flow@$VERSION"')
+    expect(releaseWorkflow).toContain('gh release view "v$VERSION"')
   })
 
   it('enforces immutable commit targeting in release workflow', () => {
@@ -352,6 +371,182 @@ describe('Release Architecture & Invariants', () => {
       expect(res.publishNpm).toBe(false)
       expect(res.createGhRelease).toBe(false)
       expect(res.status).toBe('complete')
+    })
+  })
+
+  describe('PR Label State Machine & Reconciliation Logic', () => {
+    function reconcilePrLabels(params: {
+      mode: 'automated' | 'bootstrap' | 'retry'
+      tagExists: boolean
+      npmExists: boolean
+      ghReleaseExists: boolean
+      currentLabels: string[]
+    }): {
+      reconciled: boolean
+      labelsToAdd: string[]
+      labelsToRemove: string[]
+      finalLabels: string[]
+      error?: string
+    } {
+      if (params.mode !== 'automated') {
+        return {
+          reconciled: false,
+          labelsToAdd: [],
+          labelsToRemove: [],
+          finalLabels: [...params.currentLabels],
+        }
+      }
+
+      if (!params.tagExists || !params.npmExists || !params.ghReleaseExists) {
+        return {
+          reconciled: false,
+          labelsToAdd: [],
+          labelsToRemove: [],
+          finalLabels: [...params.currentLabels],
+          error: 'Incomplete release: artifacts missing',
+        }
+      }
+
+      const hasPending = params.currentLabels.includes('autorelease: pending')
+      const hasTagged = params.currentLabels.includes('autorelease: tagged')
+
+      const labelsToRemove: string[] = []
+      const labelsToAdd: string[] = []
+
+      if (hasPending) {
+        labelsToRemove.push('autorelease: pending')
+      }
+      if (!hasTagged) {
+        labelsToAdd.push('autorelease: tagged')
+      }
+
+      const finalLabels = params.currentLabels
+        .filter((l) => !labelsToRemove.includes(l))
+        .concat(labelsToAdd)
+
+      return {
+        reconciled: true,
+        labelsToAdd,
+        labelsToRemove,
+        finalLabels,
+      }
+    }
+
+    it('transitions autorelease: pending to autorelease: tagged when all release artifacts are verified', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: true,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(result.reconciled).toBe(true)
+      expect(result.labelsToRemove).toEqual(['autorelease: pending'])
+      expect(result.labelsToAdd).toEqual(['autorelease: tagged'])
+      expect(result.finalLabels).toEqual(['autorelease: tagged'])
+    })
+
+    it('is idempotent on retry when release PR is already tagged', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: true,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: tagged'],
+      })
+
+      expect(result.reconciled).toBe(true)
+      expect(result.labelsToRemove).toEqual([])
+      expect(result.labelsToAdd).toEqual([])
+      expect(result.finalLabels).toEqual(['autorelease: tagged'])
+    })
+
+    it('cleans up when both pending and tagged labels coexist', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: true,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending', 'autorelease: tagged'],
+      })
+
+      expect(result.reconciled).toBe(true)
+      expect(result.labelsToRemove).toEqual(['autorelease: pending'])
+      expect(result.labelsToAdd).toEqual([])
+      expect(result.finalLabels).toEqual(['autorelease: tagged'])
+    })
+
+    it('adds autorelease: tagged when neither label exists but release is complete', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: true,
+        ghReleaseExists: true,
+        currentLabels: [],
+      })
+
+      expect(result.reconciled).toBe(true)
+      expect(result.labelsToRemove).toEqual([])
+      expect(result.labelsToAdd).toEqual(['autorelease: tagged'])
+      expect(result.finalLabels).toEqual(['autorelease: tagged'])
+    })
+
+    it('does NOT transition labels if git tag is missing', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: false,
+        npmExists: true,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(result.reconciled).toBe(false)
+      expect(result.finalLabels).toEqual(['autorelease: pending'])
+      expect(result.error).toContain('Incomplete release')
+    })
+
+    it('does NOT transition labels if npm package is missing', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: false,
+        ghReleaseExists: true,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(result.reconciled).toBe(false)
+      expect(result.finalLabels).toEqual(['autorelease: pending'])
+      expect(result.error).toContain('Incomplete release')
+    })
+
+    it('does NOT transition labels if GitHub release is missing', () => {
+      const result = reconcilePrLabels({
+        mode: 'automated',
+        tagExists: true,
+        npmExists: true,
+        ghReleaseExists: false,
+        currentLabels: ['autorelease: pending'],
+      })
+
+      expect(result.reconciled).toBe(false)
+      expect(result.finalLabels).toEqual(['autorelease: pending'])
+      expect(result.error).toContain('Incomplete release')
+    })
+
+    it('no-ops safely in manual modes (bootstrap/retry) where no release PR event exists', () => {
+      const result = reconcilePrLabels({
+        mode: 'retry',
+        tagExists: true,
+        npmExists: true,
+        ghReleaseExists: true,
+        currentLabels: ['some-custom-label'],
+      })
+
+      expect(result.reconciled).toBe(false)
+      expect(result.labelsToAdd).toEqual([])
+      expect(result.labelsToRemove).toEqual([])
+      expect(result.finalLabels).toEqual(['some-custom-label'])
     })
   })
 })
