@@ -10,14 +10,14 @@
   "publishConfig": {
     "access": "public"
   },
-  "homepage": "https://github.com/GitHackerz/prisma-flow#readme",
+  "homepage": "https://github.com/prisma-flow/prisma-flow#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/GitHackerz/prisma-flow.git",
+    "url": "git+https://github.com/prisma-flow/prisma-flow.git",
     "directory": "packages/shared"
   },
   "bugs": {
-    "url": "https://github.com/GitHackerz/prisma-flow/issues"
+    "url": "https://github.com/prisma-flow/prisma-flow/issues"
   },
   "exports": {
     ".": {
