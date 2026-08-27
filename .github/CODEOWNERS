@@ -1,0 +1,9 @@
+# Default maintainer for the current single-maintainer phase.
+* @GitHackerz
+
+# Keep project governance and release automation under explicit maintainer review.
+/.github/ @GitHackerz
+/SECURITY.md @GitHackerz
+/CONTRIBUTING.md @GitHackerz
+/packages/cli/package.json @GitHackerz
+/packages/shared/package.json @GitHackerz
