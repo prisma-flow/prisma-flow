@@ -1,7 +1,6 @@
 name: Question or support request
 description: Ask for help with setup, usage, or a PrismaFlow workflow.
 title: "[Question]: "
-labels: ["question"]
 body:
   - type: markdown
     attributes:
@@ -12,7 +11,7 @@ body:
     attributes:
       label: PrismaFlow version
       description: Run `prisma-flow --version` or provide the package version you installed.
-      placeholder: "0.2.0"
+      placeholder: "e.g. 0.1.0"
     validations:
       required: true
   - type: input
@@ -20,7 +19,7 @@ body:
     attributes:
       label: Prisma version
       description: Run `npx prisma -v` and provide the Prisma CLI version.
-      placeholder: "7.x"
+      placeholder: "e.g. 7.x"
     validations:
       required: false
   - type: dropdown
