@@ -22,11 +22,14 @@ vi.mock('../core/migration-analyzer.js', () => ({
   getMigrations: vi.fn().mockResolvedValue([]),
   getProjectStatus: vi.fn().mockResolvedValue({
     connected: true,
+    migrationVerification: 'verified',
     migrationsApplied: 0,
     migrationsPending: 0,
     migrationsFailed: 0,
+    migrationsUnknown: 0,
     driftDetected: false,
     driftCount: 0,
+    driftStatus: 'clean',
     riskLevel: 'low',
     healthScore: 100,
     deploymentReadiness: {
@@ -64,7 +67,7 @@ vi.mock('../logger.js', () => ({
 }))
 
 // Import after mocks
-const { createServer } = await import('../server/index.js')
+const { createServer, isLoopbackAddress, startServer } = await import('../server/index.js')
 
 // ─── Test suite ───────────────────────────────────────────────────────────────
 
@@ -200,6 +203,34 @@ describe('Hono API Server', () => {
     it('sets X-Content-Type-Options header', async () => {
       const res = await app.request(`/api/status?token=${token}`)
       expect(res.headers.get('X-Content-Type-Options')).toBe('nosniff')
+    })
+  })
+
+  // ─── Loopback Binding Protection (Issue #42) ─────────────────────────────
+
+  describe('Loopback address validation', () => {
+    it('accepts valid loopback addresses', () => {
+      expect(isLoopbackAddress('127.0.0.1')).toBe(true)
+      expect(isLoopbackAddress('127.0.0.2')).toBe(true)
+      expect(isLoopbackAddress('localhost')).toBe(true)
+      expect(isLoopbackAddress('::1')).toBe(true)
+      expect(isLoopbackAddress('[::1]')).toBe(true)
+    })
+
+    it('rejects 0.0.0.0 and external network addresses', () => {
+      expect(isLoopbackAddress('0.0.0.0')).toBe(false)
+      expect(isLoopbackAddress('192.168.1.100')).toBe(false)
+      expect(isLoopbackAddress('10.0.0.1')).toBe(false)
+      expect(isLoopbackAddress('example.com')).toBe(false)
+    })
+
+    it('startServer throws on non-loopback hostname', () => {
+      expect(() => startServer(app, 5555, '0.0.0.0')).toThrow(
+        /PrismaFlow V1 strictly rejects non-loopback bindings/,
+      )
+      expect(() => startServer(app, 5555, '192.168.1.50')).toThrow(
+        /PrismaFlow V1 strictly rejects non-loopback bindings/,
+      )
     })
   })
 })

@@ -89,19 +89,19 @@ export class GitAwarenessError extends PrismaFlowError {
   }
 }
 
-export class FeatureGatedError extends PrismaFlowError {
-  constructor(feature: string, requiredTier: string) {
-    super(
-      `Feature "${feature}" requires the ${requiredTier} tier. Upgrade at https://prismaflow.dev/pricing`,
-      'FEATURE_GATED',
-    )
-    this.name = 'FeatureGatedError'
+export class DriftRepairError extends PrismaFlowError {
+  constructor(detail: string, cause?: unknown) {
+    super(`Drift repair plan failed: ${detail}`, 'DRIFT_REPAIR_FAILED', cause)
+    this.name = 'DriftRepairError'
   }
 }
 
-export class DriftRepairError extends PrismaFlowError {
-  constructor(detail: string, cause?: unknown) {
-    super(`Drift repair failed: ${detail}`, 'DRIFT_REPAIR_FAILED', cause)
-    this.name = 'DriftRepairError'
+export class UnsupportedPrismaVersionError extends PrismaFlowError {
+  constructor(version: string, detail?: string) {
+    super(
+      `Prisma version "${version}" is not supported.${detail ? ` ${detail}` : ''}`,
+      'UNSUPPORTED_PRISMA_VERSION',
+    )
+    this.name = 'UnsupportedPrismaVersionError'
   }
 }

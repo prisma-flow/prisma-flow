@@ -1,169 +1,97 @@
-// ─── Migration ────────────────────────────────────────────────────────────────
+import type { z } from 'zod'
+import type * as S from './schemas.js'
 
-export type MigrationStatus = 'applied' | 'pending' | 'failed'
+// ─── Inferred Types from Canonical Zod Schemas ───────────────────────────────
 
-export type RiskLevel = 'low' | 'medium' | 'high' | 'critical'
+export type MigrationStatus = z.infer<typeof S.MigrationStatusSchema>
+export type MigrationVerificationStatus = z.infer<typeof S.MigrationVerificationStatusSchema>
+export type RiskLevel = z.infer<typeof S.RiskLevelSchema>
 
-export interface Migration {
-  name: string
-  timestamp: string // ISO-8601 in API responses
-  status: MigrationStatus
-  sqlPath: string
-  createdAt?: string
-  appliedAt?: string
-  durationMs?: number
-}
+export type DriftType = z.infer<typeof S.DriftTypeSchema>
+export type DriftDetectionStatus = z.infer<typeof S.DriftDetectionStatusSchema>
+export type DriftRepairStrategy = z.infer<typeof S.DriftRepairStrategySchema>
 
-export interface MigrationDetail extends Migration {
-  sql: string
-  risks: string[]
-  riskScore?: MigrationRiskScore
-  rollbackPlan?: RollbackPlan
-  gitBranch?: string
-}
+export type LogLevel = z.infer<typeof S.LogLevelSchema>
+export type WebhookType = z.infer<typeof S.WebhookTypeSchema>
+export type WebhookEvent = z.infer<typeof S.WebhookEventSchema>
+export type DatabaseProvider = z.infer<typeof S.DatabaseProviderSchema>
+export type SchemaDiffType = z.infer<typeof S.SchemaDiffTypeSchema>
 
-// ─── Drift ────────────────────────────────────────────────────────────────────
+export type SimulationVerification = z.infer<typeof S.SimulationVerificationSchema>
+export type SimulationOutcome = z.infer<typeof S.SimulationOutcomeSchema>
+export type SimulationMode = z.infer<typeof S.SimulationModeSchema>
+export type SimulationStatementType = z.infer<typeof S.SimulationStatementTypeSchema>
 
-export type DriftType =
-  | 'table-missing'
-  | 'table-extra'
-  | 'column-mismatch'
-  | 'index-change'
-  | 'constraint-change'
-  | 'unknown'
-  | 'missing_migration'
-  | 'extra_column'
-  | 'extra_table'
-  | 'modified_migration'
-
-export interface DriftItem {
-  sql: string
-  type: DriftType
-  description: string
-  /** Stable identifier for the drifted object (e.g. table name or migration name) */
-  identifier?: string
-  /** Migration name associated with this drift item */
-  migrationName?: string
-}
-
-export type DriftDetectionStatus = 'clean' | 'drifted' | 'error'
-
-export interface DriftResult {
-  hasDrift: boolean
-  driftCount: number
-  differences: DriftItem[]
-  cachedAt: string | null
-  status: DriftDetectionStatus
-  errorMessage?: string
-}
-
-// ─── Project Status ───────────────────────────────────────────────────────────
-
-export interface ProjectStatus {
-  connected: boolean
-  migrationsApplied: number
-  migrationsPending: number
-  migrationsFailed: number
-  driftDetected: boolean
-  driftCount: number
-  riskLevel: RiskLevel
-  healthScore: number
-  deploymentReadiness: DeploymentReadiness
-  lastSync: string // ISO-8601
-  provider?: DatabaseProvider
-  projectName?: string
-  schemaPath?: string
-  migrationsPath?: string
-  prismaVersion?: string
-  packageManager?: string
-  hasDatabaseUrl?: boolean
-}
-
-export type DeploymentReadinessStatus = 'ready' | 'attention' | 'blocked'
-
-export interface DeploymentReadinessCheck {
-  id: 'database' | 'drift' | 'failed-migrations' | 'pending-migrations' | 'critical-risks'
-  label: string
-  passed: boolean
-  message: string
-}
-
-export interface DeploymentReadiness {
-  status: DeploymentReadinessStatus
-  score: number
-  summary: string
-  checks: DeploymentReadinessCheck[]
-}
-
-// ─── Deployment Plan ─────────────────────────────────────────────────────────
-
+export type DeploymentReadinessStatus = z.infer<typeof S.DeploymentReadinessStatusSchema>
+export type DeploymentReadinessCheckId = z.infer<typeof S.DeploymentReadinessCheckIdSchema>
+export type DeploymentPlanPriority = z.infer<typeof S.DeploymentPlanPrioritySchema>
 export type DeploymentPlanDecision = DeploymentReadinessStatus
 
-export type DeploymentPlanPriority = 'blocker' | 'recommended' | 'optional'
+export type Migration = z.infer<typeof S.MigrationSchema>
+export type RiskFactor = z.infer<typeof S.RiskFactorSchema>
+export type MigrationRiskScore = z.infer<typeof S.MigrationRiskScoreSchema>
+export type RollbackStep = z.infer<typeof S.RollbackStepSchema>
+export type RollbackPlan = z.infer<typeof S.RollbackPlanSchema>
+export type MigrationDetail = z.infer<typeof S.MigrationDetailSchema>
 
-export interface DeploymentPlanAction {
-  priority: DeploymentPlanPriority
-  title: string
-  detail: string
-  command?: string
-  href?: string
+export type DriftItem = z.infer<typeof S.DriftItemSchema>
+export type DriftResult = z.infer<typeof S.DriftResultSchema>
+
+export type DeploymentReadinessCheck = z.infer<typeof S.DeploymentReadinessCheckSchema>
+export type DeploymentReadiness = z.infer<typeof S.DeploymentReadinessSchema>
+
+export type DeploymentPlanAction = z.infer<typeof S.DeploymentPlanActionSchema>
+export type DeploymentPlanCommand = z.infer<typeof S.DeploymentPlanCommandSchema>
+export type DeploymentPlanMigrationSummary = z.infer<typeof S.DeploymentPlanMigrationSummarySchema>
+export type DeploymentPlanDriftSummary = z.infer<typeof S.DeploymentPlanDriftSummarySchema>
+export type DeploymentPlan = z.infer<typeof S.DeploymentPlanSchema>
+
+export type ProjectStatus = z.infer<typeof S.ProjectStatusSchema>
+
+export type SimulationStatement = z.infer<typeof S.SimulationStatementSchema>
+export type SimulationResult = z.infer<typeof S.SimulationResultSchema>
+
+export type DriftRecoverySuggestion = z.infer<typeof S.DriftRecoverySuggestionSchema>
+export type DriftRepairPlan = z.infer<typeof S.DriftRepairPlanSchema>
+
+export type SchemaDiff = z.infer<typeof S.SchemaDiffSchema>
+export type MigrationHistoryDiff = z.infer<typeof S.MigrationHistoryDiffSchema>
+export type EnvironmentComparisonEntry = z.infer<typeof S.EnvironmentComparisonEntrySchema>
+export type EnvironmentComparison = z.infer<typeof S.EnvironmentComparisonSchema>
+
+export type GitMigrationInfo = z.infer<typeof S.GitMigrationInfoSchema>
+export type MigrationConflict = z.infer<typeof S.MigrationConflictSchema>
+
+export type AuditAction = z.infer<typeof S.AuditActionSchema>
+export type AuditEntry = z.infer<typeof S.AuditEntrySchema>
+
+export type PaginationQuery = z.infer<typeof S.PaginationQuerySchema>
+export type PaginationMeta = z.infer<typeof S.PaginationMetaSchema>
+
+export type WebhookConfig = z.infer<typeof S.WebhookConfigSchema>
+export type FeatureFlags = z.infer<typeof S.FeatureFlagsSchema>
+export type EnvironmentEntry = z.infer<typeof S.EnvironmentEntrySchema>
+export type PrismaFlowConfig = z.infer<typeof S.PrismaFlowConfigSchema>
+export type PrismaFlowConfigParsed = z.infer<typeof S.PrismaFlowConfigSchema>
+
+export type SSEEventType = z.infer<typeof S.SSEEventTypeSchema>
+export type SSEEvent<T = unknown> = {
+  type: SSEEventType
+  data: T
+  timestamp: string
 }
 
-export interface DeploymentPlanCommand {
-  label: string
-  command: string
-  reason: string
-}
+export type SchemaField = z.infer<typeof S.SchemaFieldSchema>
+export type SchemaModel = z.infer<typeof S.SchemaModelSchema>
+export type SchemaEnum = z.infer<typeof S.SchemaEnumSchema>
+export type SchemaDatamodel = z.infer<typeof S.SchemaDatamodelSchema>
 
-export interface DeploymentPlanMigrationSummary {
-  total: number
-  applied: number
-  pending: number
-  failed: number
-  pendingNames: string[]
-  failedNames: string[]
-  highestRisk?: {
-    name: string
-    level: RiskLevel
-    score: number
-    factors: RiskFactor[]
-  }
-}
-
-export interface DeploymentPlanDriftSummary {
-  status: DriftDetectionStatus
-  detected: boolean
-  count: number
-  errorMessage?: string
-}
-
-export interface DeploymentPlan {
-  schemaVersion: 'prismaflow-plan/v1'
-  generatedAt: string
-  decision: DeploymentPlanDecision
-  score: number
-  summary: string
-  project: {
-    schemaPath: string
-    migrationsPath: string
-    provider?: DatabaseProvider
-    prismaVersion?: string
-    packageManager?: string
-    hasDatabaseUrl: boolean
-  }
-  checks: DeploymentReadinessCheck[]
-  migrations: DeploymentPlanMigrationSummary
-  drift: DeploymentPlanDriftSummary
-  actions: DeploymentPlanAction[]
-  commands: DeploymentPlanCommand[]
-  valueHighlights: string[]
-}
-
-// ─── API Responses ────────────────────────────────────────────────────────────
+// ─── API Envelope Types ──────────────────────────────────────────────────────
 
 export interface ApiSuccess<T> {
   success: true
   data: T
+  message?: string
 }
 
 export interface ApiError {
@@ -173,354 +101,8 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError
 
-export interface PaginationMeta {
-  page: number
-  limit: number
-  total: number
-  pages: number
-}
-
 export interface PaginatedResponse<T> {
   success: true
   data: T[]
   pagination: PaginationMeta
-}
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-export type LogLevel = 'trace' | 'debug' | 'info' | 'warn' | 'error'
-
-export type WebhookType = 'slack' | 'discord' | 'http'
-
-export interface WebhookConfig {
-  type: WebhookType
-  url: string
-  /** Only send for these event types (all by default) */
-  events?: WebhookEvent[]
-}
-
-export type WebhookEvent =
-  | 'drift-detected'
-  | 'migration-failed'
-  | 'check-complete'
-  | 'migration-applied'
-  | 'simulation-complete'
-  | 'risk-threshold-exceeded'
-
-export interface FeatureFlags {
-  riskAnalysis: boolean
-  webhookAlerts: boolean
-  auditLog: boolean
-  ciAnnotations: boolean
-  /** Roadmap: multi-environment comparison */
-  envComparison: boolean
-  /** Roadmap: rollback generation */
-  rollbackGen: boolean
-  /** Migration simulation */
-  simulation: boolean
-  /** Roadmap: git-awareness features */
-  gitAwareness: boolean
-}
-
-export interface PrismaFlowConfig {
-  port?: number
-  logLevel?: LogLevel
-  openBrowser?: boolean
-  features?: Partial<FeatureFlags>
-  webhooks?: WebhookConfig[]
-  /** Named environments for cross-env comparison */
-  environments?: Array<{ name: string; databaseUrl: string }>
-  /** Maximum audit log file size in MB before rotation (default: 10) */
-  auditLogMaxMb?: number
-  /** Risk threshold that triggers warnings (default: medium) */
-  riskThreshold?: RiskLevel
-}
-
-// ─── Audit ────────────────────────────────────────────────────────────────────
-
-export type AuditAction =
-  | 'dashboard.start'
-  | 'status.check'
-  | 'drift.detect'
-  | 'drift.repair'
-  | 'migration.check'
-  | 'migration.apply'
-  | 'migration.simulate'
-  | 'migration.rollback'
-  | 'migration.inspect'
-  | 'migration.history'
-  | 'migration.create'
-  | 'deployment.plan'
-  | 'doctor.run'
-  | 'env.compare'
-  | 'schema.diff'
-
-export interface AuditEntry {
-  timestamp: string // ISO-8601
-  action: AuditAction
-  cwd: string
-  result: 'success' | 'failure' | 'warning'
-  detail?: Record<string, unknown>
-}
-
-// ─── Risk Analysis ────────────────────────────────────────────────────────────
-
-export interface RiskFactor {
-  pattern: string
-  severity: RiskLevel
-  description: string
-  affectedTable?: string
-  estimatedRows?: number
-  recommendation: string
-}
-
-export interface MigrationRiskScore {
-  /** Composite score 0-100 (higher = more dangerous) */
-  score: number
-  level: RiskLevel
-  factors: RiskFactor[]
-}
-
-// ─── Rollback ─────────────────────────────────────────────────────────────────
-
-export interface RollbackStep {
-  /** Original forward statement index */
-  index: number
-  forwardSql: string
-  rollbackSql: string
-  /** True if PrismaFlow can run this automatically */
-  automated: boolean
-  warning?: string
-}
-
-export interface RollbackPlan {
-  migrationName: string
-  steps: RollbackStep[]
-  hasManualSteps: boolean
-  warnings: string[]
-  generatedAt: string
-  /** True only when every step is automated */
-  automated: boolean
-  /** Legacy — full SQL string rendered from steps */
-  sql?: string
-}
-
-// ─── Simulation ───────────────────────────────────────────────────────────────
-
-export type SimulationMode = 'static' | 'shadow' | 'live'
-
-export interface SimulationStatement {
-  index: number
-  sql: string
-  type:
-    | 'CREATE_TABLE'
-    | 'ALTER_TABLE'
-    | 'DROP_TABLE'
-    | 'CREATE_INDEX'
-    | 'DROP_INDEX'
-    | 'INSERT'
-    | 'UPDATE'
-    | 'DELETE'
-    | 'TRUNCATE'
-    | 'OTHER'
-  isDestructive: boolean
-  warnings: string[]
-  estimatedRowsAffected?: number
-  /** Set when run against a real or shadow DB */
-  success?: boolean
-  error?: string
-  durationMs?: number
-}
-
-export interface SimulationResult {
-  migrationName: string
-  statements: SimulationStatement[]
-  wouldSucceed: boolean
-  destructiveStatements: number
-  warnings: string[]
-  simulatedAt: string
-  mode: SimulationMode
-  error?: string
-  /** Legacy fields for backwards compat */
-  appliedStatements?: SimulationStatement[]
-  errors?: string[]
-  totalDurationMs?: number
-}
-
-// ─── Drift Recovery ───────────────────────────────────────────────────────────
-
-export type DriftRepairStrategy = 'APPLY_MIGRATION' | 'SQUASH' | 'MANUAL_SQL' | 'IGNORE'
-
-export interface DriftRecoverySuggestion {
-  driftItem: DriftItem
-  strategy: DriftRepairStrategy
-  description: string
-  sql?: string
-  automated: boolean
-  risk: 'low' | 'medium' | 'high'
-}
-
-// ─── Schema Diff ──────────────────────────────────────────────────────────────
-
-export type SchemaDiffType =
-  | 'model_added'
-  | 'model_removed'
-  | 'field_added'
-  | 'field_removed'
-  | 'field_type_changed'
-  | 'added'
-  | 'removed'
-  | 'modified'
-
-export interface SchemaDiff {
-  type: SchemaDiffType
-  /** Model/table name */
-  modelName?: string
-  /** Field/column name (for field-level diffs) */
-  fieldName?: string
-  oldType?: string
-  newType?: string
-  description: string
-  breaking: boolean
-  /** Legacy fields */
-  entity?: string
-  field?: string
-  before?: string
-  after?: string
-}
-
-export interface MigrationHistoryDiff {
-  sourceEnv: string
-  targetEnv: string
-  sourceApplied: number
-  targetApplied: number
-  onlyInSource: string[]
-  onlyInTarget: string[]
-  divergencePoint?: string
-  inSync: boolean
-  /** Legacy fields */
-  name?: string
-  presentInSource?: boolean
-  presentInTarget?: boolean
-  statusInSource?: MigrationStatus
-  statusInTarget?: MigrationStatus
-}
-
-export interface EnvironmentEntry {
-  name: string
-  reachable: boolean
-  appliedCount: number
-  pendingCount: number
-  failedCount: number
-}
-
-export interface EnvironmentComparison {
-  referenceEnv: string
-  environments: EnvironmentEntry[]
-  diffs: MigrationHistoryDiff[]
-  allInSync: boolean
-  comparedAt: string
-  /** Legacy fields */
-  source?: string
-  target?: string
-  schemaDiffs?: SchemaDiff[]
-  migrationDiffs?: MigrationHistoryDiff[]
-}
-
-// ─── Git Awareness ────────────────────────────────────────────────────────────
-
-export interface GitMigrationInfo {
-  migrationName: string
-  committed: boolean
-  commitHash?: string
-  commitAuthor?: string
-  commitDate?: string
-  commitMessage?: string
-  /** Legacy fields */
-  branch?: string
-  authorName?: string
-  committedAt?: string
-}
-
-export interface MigrationConflict {
-  timestamp: string
-  migrations: string[]
-  type: 'duplicate_timestamp' | 'timestamp-overlap' | 'name-conflict' | 'history-diverge'
-  description: string
-  /** Legacy fields */
-  migrationA?: string
-  migrationB?: string
-  branches?: string[]
-  conflictType?: 'timestamp-overlap' | 'name-conflict' | 'history-diverge'
-}
-
-// ─── Multi-Database ───────────────────────────────────────────────────────────
-
-export type DatabaseProvider = 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver' | 'mongodb'
-
-// ─── SaaS / Multi-Tenant ─────────────────────────────────────────────────────
-
-export interface Organization {
-  id: string
-  name: string
-  slug: string
-  createdAt: string
-}
-
-export interface Team {
-  id: string
-  name: string
-  organizationId: string
-  createdAt: string
-}
-
-export interface Project {
-  id: string
-  name: string
-  organizationId: string
-  teamId?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface Environment {
-  id: string
-  name: string
-  projectId: string
-  provider: DatabaseProvider
-  /** Encrypted in SaaS mode */
-  connectionString?: string
-  createdAt: string
-  updatedAt: string
-}
-
-export interface DeploymentEvent {
-  id: string
-  projectId: string
-  environmentId: string
-  migrationsApplied: string[]
-  appliedBy?: string
-  durationMs: number
-  success: boolean
-  error?: string
-  createdAt: string
-}
-
-// ─── SSE Events ───────────────────────────────────────────────────────────────
-
-export type SSEEventType =
-  | 'status-update'
-  | 'drift-detected'
-  | 'drift-resolved'
-  | 'migration-applied'
-  | 'migration-failed'
-  | 'simulation-progress'
-  | 'simulation-complete'
-  | 'repair-progress'
-  | 'repair-complete'
-
-export interface SSEEvent<T = unknown> {
-  type: SSEEventType
-  data: T
-  timestamp: string
 }

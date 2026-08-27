@@ -8,7 +8,7 @@ COPY package*.json ./
 COPY packages/shared/package*.json ./packages/shared/
 COPY turbo.json ./
 
-RUN npm ci --workspace=packages/shared
+RUN npm ci --workspace=packages/shared --ignore-scripts
 
 # Build shared
 COPY packages/shared ./packages/shared
@@ -26,7 +26,7 @@ COPY packages/shared/package*.json ./packages/shared/
 COPY packages/dashboard/package*.json ./packages/dashboard/
 COPY turbo.json ./
 
-RUN npm ci --workspace=packages/dashboard
+RUN npm ci --workspace=packages/dashboard --ignore-scripts
 
 # Copy shared dist from stage 1
 COPY --from=shared-builder /build/packages/shared/dist ./packages/shared/dist
@@ -48,7 +48,7 @@ COPY packages/shared/package*.json ./packages/shared/
 COPY packages/cli/package*.json ./packages/cli/
 COPY turbo.json ./
 
-RUN npm ci --workspace=packages/cli
+RUN npm ci --workspace=packages/cli --ignore-scripts
 
 # Copy shared dist
 COPY --from=shared-builder /build/packages/shared/dist ./packages/shared/dist
@@ -62,6 +62,8 @@ COPY packages/cli ./packages/cli
 COPY tsconfig.base.json ./
 # Run the full build (copy-dashboard.mjs → tsup)
 RUN npm run build --workspace=packages/cli
+# Pack workspace tarballs for clean runtime installation
+RUN npm pack --workspace=packages/shared && npm pack --workspace=packages/cli
 
 
 # ─── Stage 4 — Minimal production runtime ────────────────────────────────────
@@ -78,23 +80,23 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PRISMAFLOW_PORT=5555 \
-    PRISMAFLOW_OPEN_BROWSER=false
+    PRISMAFLOW_NO_OPEN=1
 
-# Only copy the production artifacts — no source, no devDeps
-COPY --from=cli-builder /build/packages/cli/dist     ./dist
-COPY --from=cli-builder /build/packages/cli/public   ./public
-COPY --from=cli-builder /build/packages/cli/package.json ./
+# Copy packed tarballs from builder
+COPY --from=cli-builder /build/*.tgz /app/
 
-# Install only production dependencies (no devDeps, no scripts)
-RUN npm install --omit=dev --ignore-scripts && \
+# Install the packed prisma-flow package globally
+RUN npm install -g /app/*.tgz && \
+    rm -rf /app/*.tgz && \
     npm cache clean --force
 
 USER prismaflow
 
 EXPOSE ${PRISMAFLOW_PORT}
 
-# The CLI needs the project mounted at /project
+# The CLI runs against the project mounted at /project
 VOLUME ["/project"]
+WORKDIR /project
 
-ENTRYPOINT ["node", "dist/index.js"]
-CMD ["--project-path", "/project"]
+ENTRYPOINT ["prisma-flow"]
+CMD ["dashboard", "--no-open"]

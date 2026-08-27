@@ -31,11 +31,14 @@ interface PrismaFlowReport {
   }
   summary: {
     connected: boolean
+    migrationVerification: string
     migrationsApplied: number
     migrationsPending: number
     migrationsFailed: number
+    migrationsUnknown: number
     driftDetected: boolean
     driftCount: number
+    driftStatus: string
     riskLevel: string
     healthScore: number
   }
@@ -90,7 +93,7 @@ function buildRecommendations(
     ...readinessActions,
     ...uniqueRecommendations(topRiskFactors),
     ...(driftCount > 0
-      ? ['Review drift details and reconcile the Prisma schema before deployment.']
+      ? ['Review schema drift details and reconcile the Prisma schema before deployment.']
       : []),
   ]
 
@@ -117,11 +120,13 @@ function renderMarkdown(report: PrismaFlowReport): string {
     '## Summary',
     '',
     `- Database connected: ${report.summary.connected ? 'yes' : 'no'}`,
+    `- Migration verification: ${report.summary.migrationVerification}`,
     `- Applied migrations: ${report.summary.migrationsApplied}`,
     `- Pending migrations: ${report.summary.migrationsPending}`,
     `- Failed migrations: ${report.summary.migrationsFailed}`,
-    `- Drift: ${report.summary.driftDetected ? `${report.summary.driftCount} item(s)` : 'none'}`,
-    `- Risk level: ${report.summary.riskLevel}`,
+    `- Unknown migrations: ${report.summary.migrationsUnknown}`,
+    `- Drift: ${report.summary.driftDetected ? `${report.summary.driftCount} item(s)` : report.summary.driftStatus}`,
+    `- Estimated risk level: ${report.summary.riskLevel} (heuristic)`,
     `- Health score: ${report.summary.healthScore}/100`,
     `- Deployment readiness: ${report.readiness.summary} (${report.readiness.score}/100)`,
     '',
@@ -135,7 +140,7 @@ function renderMarkdown(report: PrismaFlowReport): string {
     '',
     '## Migration Timeline',
     '',
-    '| Migration | Status | Created | Applied | Duration | Risk |',
+    '| Migration | Status | Created | Applied | Duration | Estimated Risk |',
     '| --- | --- | --- | --- | --- | --- |',
     ...report.migrations.map(
       (migration) =>
@@ -149,7 +154,11 @@ function renderMarkdown(report: PrismaFlowReport): string {
   ]
 
   if (report.drift.items.length === 0) {
-    lines.push('No drift detected.')
+    lines.push(
+      report.drift.status === 'clean'
+        ? 'No drift detected.'
+        : `Drift status: ${report.drift.status}`,
+    )
   } else {
     for (const item of report.drift.items) {
       lines.push(`- ${item.type}: ${item.description}`)
@@ -227,11 +236,14 @@ export function reportCommand() {
           },
           summary: {
             connected: status.connected,
+            migrationVerification: status.migrationVerification,
             migrationsApplied: status.migrationsApplied,
             migrationsPending: status.migrationsPending,
             migrationsFailed: status.migrationsFailed,
+            migrationsUnknown: status.migrationsUnknown,
             driftDetected: status.driftDetected,
             driftCount: status.driftCount,
+            driftStatus: status.driftStatus,
             riskLevel: status.riskLevel,
             healthScore: status.healthScore,
           },

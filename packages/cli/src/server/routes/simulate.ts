@@ -6,7 +6,7 @@ import { simulate } from '../../core/simulator.js'
 type Variables = { projectPath: string; requestId: string }
 const app = new Hono<{ Variables: Variables }>()
 
-/** GET /api/simulate/:migration — dry-run a migration */
+/** GET /api/simulate/:migration — preview migration statements */
 app.get('/:migration', async (c) => {
   const projectPath = c.get('projectPath') as string
   const migrationQuery = c.req.param('migration')
@@ -25,7 +25,7 @@ app.get('/:migration', async (c) => {
         ? (resolveSqliteFilePath(project.databaseUrl, project.schemaPath) ?? undefined)
         : undefined
 
-    const result = await simulate(match.name, sqlFile, dbPath)
+    const result = await simulate(match.name, sqlFile, dbPath, project.provider)
     return c.json({ success: true, data: result })
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)

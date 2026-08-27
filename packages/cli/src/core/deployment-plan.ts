@@ -52,6 +52,14 @@ function actionForCheck(
           : 'Add a local DATABASE_URL before relying on migration status, drift, or simulation output.',
         command: 'prisma-flow doctor',
       }
+    case 'migration-verification':
+      return {
+        priority: 'blocker',
+        title: 'Verify migration state',
+        detail:
+          'Prisma CLI returned an unverified or error status. Run doctor diagnostics or check schema/database access.',
+        command: 'prisma-flow doctor',
+      }
     case 'drift':
       return {
         priority: 'blocker',
@@ -208,6 +216,7 @@ function summarizeDecision(status: ProjectStatus): string {
 
   const issueLabels: Record<DeploymentReadinessCheck['id'], string> = {
     database: 'database connectivity',
+    'migration-verification': 'migration verification',
     drift: 'schema drift',
     'failed-migrations': 'failed migrations',
     'pending-migrations': 'pending migrations',
@@ -224,10 +233,11 @@ function summarizeDecision(status: ProjectStatus): string {
 export function createDeploymentPlanFromState(state: DeploymentPlanState): DeploymentPlan {
   const pending = state.migrations.filter((migration) => migration.status === 'pending')
   const failed = state.migrations.filter((migration) => migration.status === 'failed')
+  const unknown = state.migrations.filter((migration) => migration.status === 'unknown')
   const highestRisk = highestRiskMigration(pending.length > 0 ? pending : state.migrations)
 
   const drift: DeploymentPlanDriftSummary = state.drift ?? {
-    status: state.status.driftDetected ? 'drifted' : 'clean',
+    status: state.status.driftStatus,
     detected: state.status.driftDetected,
     count: state.status.driftCount,
   }
@@ -252,6 +262,8 @@ export function createDeploymentPlanFromState(state: DeploymentPlanState): Deplo
       applied: state.migrations.filter((migration) => migration.status === 'applied').length,
       pending: pending.length,
       failed: failed.length,
+      unknown: unknown.length,
+      verification: state.status.migrationVerification,
       pendingNames: pending.map((migration) => migration.name),
       failedNames: failed.map((migration) => migration.name),
       ...(highestRisk

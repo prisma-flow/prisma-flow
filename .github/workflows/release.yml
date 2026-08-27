@@ -11,7 +11,7 @@ concurrency:
 
 permissions:
   contents: write
-  id-token: write # Required for npm provenance
+  id-token: write # Required for npm provenance / trusted publishing
 
 jobs:
   publish:
@@ -26,12 +26,15 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v7
         with:
-          node-version: "20.x"
+          node-version: "22.x"
           cache: npm
           registry-url: https://registry.npmjs.org
+
+      - name: Ensure npm 11 for trusted publishing
+        run: npm install -g npm@11
 
       - name: Install dependencies
         run: npm ci
@@ -73,17 +76,13 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
 
-      - name: Publish @prisma-flow/shared to npm
+      - name: Publish @prisma-flow/shared to npm (Trusted Publishing)
         if: steps.npm.outputs.publish_shared == 'true'
         run: npm publish --workspace=@prisma-flow/shared --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish prisma-flow to npm
+      - name: Publish prisma-flow to npm (Trusted Publishing)
         if: steps.npm.outputs.publish_cli == 'true'
         run: npm publish --workspace=prisma-flow --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Generate release notes
         if: steps.npm.outputs.publish_shared == 'true' || steps.npm.outputs.publish_cli == 'true'

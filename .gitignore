@@ -34,3 +34,7 @@ Thumbs.db
 # Local PrismaFlow state
 .prismaflow/
 test-project/.prismaflow/
+
+# Tooling and analysis cache
+.serena/
+graphify-out/

@@ -14,6 +14,10 @@ const nextActionByCheck: Record<
     action: 'Set DATABASE_URL, confirm the database is reachable, then rerun diagnostics.',
     command: 'prisma-flow doctor',
   },
+  'migration-verification': {
+    action: 'Verify Prisma migration history against the database and rerun diagnostics.',
+    command: 'prisma-flow doctor',
+  },
   drift: {
     action: 'Review drift evidence and reconcile the Prisma schema or database before deploying.',
     command: 'prisma-flow check --ci --json',

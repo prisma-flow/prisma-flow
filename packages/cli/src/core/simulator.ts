@@ -1,11 +1,13 @@
 /**
  * Migration Simulator — dry-runs SQL statements in a temporary shadow database
- * or parses them statically to predict the outcome without mutating production data.
+ * or parses them statically to predict risk factors without mutating production data.
  *
- * Design:
- *  - If the provider is SQLite, we copy the DB file to a temp path and apply SQL there.
- *  - For Postgres/MySQL we attempt to create a shadow database, apply, then drop it.
- *  - If shadow DB creation is unavailable, we fall back to static analysis.
+ * Safety & Trust Model:
+ *  - Executed verification is currently supported for SQLite via shadow database replication.
+ *  - For PostgreSQL, MySQL, and other providers, or when shadow execution cannot run,
+ *    static analysis is performed.
+ *  - STATIC ANALYSIS NEVER CLAIMS "SUCCESS" OR THAT A MIGRATION "WOULD SUCCEED".
+ *    Static analysis has outcome 'unknown' and verification 'static-analysis'.
  */
 
 import { execFile } from 'node:child_process'
@@ -13,7 +15,12 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
-import type { SimulationResult, SimulationStatement } from '@prisma-flow/shared'
+import type {
+  DatabaseProvider,
+  SimulationResult,
+  SimulationStatement,
+  SimulationStatementType,
+} from '@prisma-flow/shared'
 import { SimulationError } from '@prisma-flow/shared'
 
 const execAsync = promisify(execFile)
@@ -28,7 +35,7 @@ const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; warning: string }> = [
     warning: 'Drops a table — all data will be lost',
   },
   {
-    pattern: /truncate\s+table/i,
+    pattern: /truncate\s+table|truncate\s+\w+/i,
     warning: 'Truncates a table — all rows will be deleted',
   },
   {
@@ -36,8 +43,8 @@ const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; warning: string }> = [
     warning: 'Drops a column — data in that column will be lost',
   },
   {
-    pattern: /alter\s+column.*not\s+null/i,
-    warning: 'Adds NOT NULL — will fail if existing rows have NULLs',
+    pattern: /alter\s+column.*not\s+null|alter\s+table.*add\s+column.*not\s+null/i,
+    warning: 'Adds NOT NULL constraint — will fail if existing rows have NULLs',
   },
   { pattern: /delete\s+from/i, warning: 'Deletes rows — data will be lost' },
   {
@@ -50,7 +57,7 @@ const DESTRUCTIVE_PATTERNS: Array<{ pattern: RegExp; warning: string }> = [
   },
 ]
 
-const DDL_TYPES: Array<{ pattern: RegExp; type: SimulationStatement['type'] }> = [
+const DDL_TYPES: Array<{ pattern: RegExp; type: SimulationStatementType }> = [
   { pattern: /^\s*create\s+table/i, type: 'CREATE_TABLE' },
   { pattern: /^\s*alter\s+table/i, type: 'ALTER_TABLE' },
   { pattern: /^\s*drop\s+table/i, type: 'DROP_TABLE' },
@@ -62,7 +69,7 @@ const DDL_TYPES: Array<{ pattern: RegExp; type: SimulationStatement['type'] }> =
   { pattern: /^\s*truncate/i, type: 'TRUNCATE' },
 ]
 
-function classifyStatement(sql: string): SimulationStatement['type'] {
+function classifyStatement(sql: string): SimulationStatementType {
   for (const { pattern, type } of DDL_TYPES) {
     if (pattern.test(sql)) return type
   }
@@ -70,9 +77,8 @@ function classifyStatement(sql: string): SimulationStatement['type'] {
 }
 
 function estimateRowsAffected(sql: string): number | undefined {
-  // Very coarse estimate; real simulation would need EXPLAIN
-  if (/delete\s+from.*where/i.test(sql)) return undefined // unknown without DB
-  if (/delete\s+from\s+\w+\s*;?\s*$/i.test(sql)) return Number.POSITIVE_INFINITY // full table
+  if (/delete\s+from.*where/i.test(sql)) return undefined
+  if (/delete\s+from\s+\w+\s*;?\s*$/i.test(sql)) return Number.POSITIVE_INFINITY
   if (/truncate/i.test(sql)) return Number.POSITIVE_INFINITY
   return undefined
 }
@@ -99,7 +105,9 @@ export function splitStatements(sql: string): string[] {
 
 /**
  * Statically analyse a list of SQL statements and return a SimulationResult.
- * Does not connect to any database.
+ * Does not execute SQL.
+ * Canonical verification: 'static-analysis'
+ * Canonical outcome: 'unknown' (NEVER 'success')
  */
 export function analyseStatically(migrationName: string, statements: string[]): SimulationResult {
   const parsed: SimulationStatement[] = statements.map((sql, index) => {
@@ -124,8 +132,9 @@ export function analyseStatically(migrationName: string, statements: string[]): 
 
   return {
     migrationName,
+    verification: 'static-analysis',
+    outcome: 'unknown',
     statements: parsed,
-    wouldSucceed: true, // static analysis optimistic
     destructiveStatements: destructive.length,
     warnings: allWarnings,
     simulatedAt: new Date().toISOString(),
@@ -135,7 +144,8 @@ export function analyseStatically(migrationName: string, statements: string[]): 
 
 /**
  * Simulate a migration against a SQLite shadow copy.
- * Falls back to static analysis if the DB copy fails.
+ * Returns verification: 'executed' with outcome 'success' or 'failure'.
+ * Falls back to static analysis if shadow database setup or sqlite3 CLI is unavailable.
  */
 export async function simulateSqlite(
   migrationName: string,
@@ -151,72 +161,105 @@ export async function simulateSqlite(
     const sql = await fs.readFile(sqlFilePath, 'utf-8')
     const statements = splitStatements(sql)
 
-    // Apply via sqlite3 CLI if available
+    // Apply via sqlite3 CLI against the shadow copy
     try {
+      const startTime = Date.now()
       await execAsync('sqlite3', [shadowDb, sql], { timeout: 30_000 })
-      const staticResult = analyseStatically(migrationName, statements)
-      return { ...staticResult, wouldSucceed: true, mode: 'shadow' }
+      const durationMs = Date.now() - startTime
+
+      const staticAnalysis = analyseStatically(migrationName, statements)
+      return {
+        ...staticAnalysis,
+        verification: 'executed',
+        outcome: 'success',
+        mode: 'shadow',
+        statements: staticAnalysis.statements.map((stmt) => ({
+          ...stmt,
+          success: true,
+          durationMs: Math.round(durationMs / Math.max(1, statements.length)),
+        })),
+      }
     } catch (err: unknown) {
       const error = err instanceof Error ? err : new Error(String(err))
-      const staticResult = analyseStatically(migrationName, statements)
+      const staticAnalysis = analyseStatically(migrationName, statements)
       const errorCode = (err as { code?: string }).code
+
       if (
         errorCode === 'ENOENT' ||
         error.message.includes('ENOENT') ||
         error.message.includes('not recognized')
       ) {
         return {
-          ...staticResult,
+          ...staticAnalysis,
+          verification: 'static-analysis',
+          outcome: 'unknown',
           warnings: [
-            ...staticResult.warnings,
-            'sqlite3 CLI is not available; used static analysis instead of a shadow database.',
+            ...staticAnalysis.warnings,
+            'sqlite3 CLI is not installed; static analysis only — execution not verified.',
           ],
           mode: 'static',
         }
       }
 
       return {
-        ...staticResult,
-        wouldSucceed: false,
+        ...staticAnalysis,
+        verification: 'executed',
+        outcome: 'failure',
         error: error.message,
         mode: 'shadow',
       }
     }
   } catch {
-    // Fallback to static
+    // DB copy failed — fallback to static analysis
     const sql = await fs.readFile(sqlFilePath, 'utf-8').catch(() => '')
-    return analyseStatically(migrationName, splitStatements(sql))
+    const staticAnalysis = analyseStatically(migrationName, splitStatements(sql))
+    return {
+      ...staticAnalysis,
+      warnings: [
+        ...staticAnalysis.warnings,
+        'Shadow database setup failed; static analysis only — execution not verified.',
+      ],
+    }
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
   }
 }
 
 /**
- * High-level simulate function — picks strategy based on available info.
- *
- * @param migrationName  The migration directory name
- * @param sqlFilePath    Absolute path to migration.sql
- * @param dbFilePath     Optional — if provided and provider is sqlite, do shadow copy
+ * High-level simulate function — picks strategy based on provider and environment.
  */
 export async function simulate(
   migrationName: string,
   sqlFilePath: string,
   dbFilePath?: string,
+  provider?: DatabaseProvider | null,
 ): Promise<SimulationResult> {
   try {
     const sql = await fs.readFile(sqlFilePath, 'utf-8')
     const statements = splitStatements(sql)
 
-    if (dbFilePath && dbFilePath !== ':memory:') {
+    if (provider === 'sqlite' && dbFilePath && dbFilePath !== ':memory:') {
       try {
         await fs.access(dbFilePath)
         return await simulateSqlite(migrationName, sqlFilePath, dbFilePath)
       } catch {
-        // DB not accessible — fall through to static
+        // SQLite DB file inaccessible — fall back to static analysis
       }
     }
 
-    return analyseStatically(migrationName, statements)
+    const staticResult = analyseStatically(migrationName, statements)
+
+    if (provider && provider !== 'sqlite') {
+      return {
+        ...staticResult,
+        warnings: [
+          ...staticResult.warnings,
+          `Shadow execution is not configured for provider "${provider}"; static analysis only — execution not verified.`,
+        ],
+      }
+    }
+
+    return staticResult
   } catch (err: unknown) {
     const error = err instanceof Error ? err : new Error(String(err))
     throw new SimulationError(migrationName, error)

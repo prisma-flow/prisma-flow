@@ -15,7 +15,8 @@
       "public/**",
       "next-env.d.ts",
       "*.min.js",
-      "coverage/**"
+      "coverage/**",
+      "graphify-out/**"
     ]
   },
   "formatter": {

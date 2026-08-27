@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createRequire } from 'node:module'
 import { Command } from 'commander'
 import { checkCommand } from './commands/check.js'
 import { compareCommand } from './commands/compare.js'
@@ -15,12 +16,21 @@ import { rollbackCommand } from './commands/rollback.js'
 import { simulateCommand } from './commands/simulate.js'
 import { statusCommand } from './commands/status.js'
 
+const require = createRequire(import.meta.url)
+let cliVersion = '0.2.0'
+try {
+  const pkg = require('../package.json') as { version?: string }
+  if (pkg.version) cliVersion = pkg.version
+} catch {
+  cliVersion = process.env.npm_package_version ?? '0.2.0'
+}
+
 const program = new Command()
 
 program
   .name('prisma-flow')
   .description('Visual Prisma migration management — safe, observable, production-ready')
-  .version(process.env.npm_package_version ?? '0.1.0')
+  .version(cliVersion)
 
 program.addCommand(dashboardCommand())
 program.addCommand(statusCommand())

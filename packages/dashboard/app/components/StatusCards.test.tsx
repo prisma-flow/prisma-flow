@@ -6,11 +6,14 @@ import { StatusCards } from './StatusCards'
 // Minimal stub for ProjectStatus
 const baseStatus: ProjectStatus = {
   connected: true,
+  migrationVerification: 'verified',
   migrationsApplied: 5,
   migrationsPending: 0,
   migrationsFailed: 0,
+  migrationsUnknown: 0,
   driftDetected: false,
   driftCount: 0,
+  driftStatus: 'clean',
   riskLevel: 'low',
   healthScore: 100,
   deploymentReadiness: {

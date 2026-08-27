@@ -4,8 +4,26 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "tsconfig*.json", "package.json"],
-      "outputs": ["dist/**", "out/**", ".next/**", "!.next/cache/**"]
+      "inputs": [
+        "src/**",
+        "app/**",
+        "lib/**",
+        "components/**",
+        "public/**",
+        "scripts/**",
+        "next.config.*",
+        "postcss.config.*",
+        "tailwind.config.*",
+        "tsup.config.*",
+        "tsconfig*.json",
+        "package.json"
+      ],
+      "outputs": ["dist/**", "out/**", "public/**", ".next/**", "!.next/cache/**"]
+    },
+    "prisma-flow#build": {
+      "dependsOn": ["@prisma-flow/shared#build", "dashboard#build"],
+      "inputs": ["src/**", "scripts/**", "tsup.config.*", "tsconfig*.json", "package.json"],
+      "outputs": ["dist/**", "public/**"]
     },
     "build:dashboard": {
       "dependsOn": ["dashboard#build"],
@@ -17,14 +35,24 @@
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "tsconfig*.json"]
+      "inputs": ["src/**", "app/**", "lib/**", "components/**", "tsconfig*.json"]
     },
     "lint": {
-      "inputs": ["src/**", "app/**", "lib/**", "biome.json"]
+      "inputs": ["src/**", "app/**", "lib/**", "components/**", "biome.json"]
     },
     "test": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "app/**", "lib/**", "tests/**", "*.test.ts", "*.spec.ts"],
+      "inputs": [
+        "src/**",
+        "app/**",
+        "lib/**",
+        "components/**",
+        "tests/**",
+        "**/*.test.ts",
+        "**/*.test.tsx",
+        "**/*.spec.ts",
+        "**/*.spec.tsx"
+      ],
       "outputs": ["coverage/**"]
     },
     "clean": {
