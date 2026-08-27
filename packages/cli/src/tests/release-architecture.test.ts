@@ -40,9 +40,11 @@ describe('Release Architecture & Invariants', () => {
   })
 
   it('enforces version consistency across manifest, root, and CLI package', () => {
-    expect(cliPkg.version).toBe('0.2.0')
-    expect(rootPkg.version).toBe('0.2.0')
-    expect(releaseManifest['.']).toBe('0.2.0')
+    const releaseVersion = releaseManifest['.']
+
+    expect(releaseVersion).toMatch(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/)
+    expect(rootPkg.version).toBe(releaseVersion)
+    expect(cliPkg.version).toBe(releaseVersion)
   })
 
   it('configures Release Please for single public artifact with public impact paths', () => {
