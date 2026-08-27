@@ -1,6 +1,6 @@
 'use client'
 
-import { AlertTriangle, CheckCircle, FlaskConical } from 'lucide-react'
+import { AlertTriangle, CheckCircle, FlaskConical, Info } from 'lucide-react'
 import { useState } from 'react'
 import useSWR from 'swr'
 import { SWR_KEYS, fetchMigrations, fetchSimulation } from '../../lib/api'
@@ -16,13 +16,47 @@ export default function SimulatePage() {
   const migrations = migrationsData?.data ?? []
   const hasMigrations = migrations.length > 0
 
+  function renderStatusBadge(verification: string, outcome: string) {
+    if (verification === 'executed' && outcome === 'success') {
+      return (
+        <>
+          <p className="text-2xl font-bold text-emerald-500">PASS</p>
+          <p className="text-xs text-muted-foreground mt-1">Executed in shadow DB</p>
+        </>
+      )
+    }
+    if (verification === 'executed' && outcome === 'failure') {
+      return (
+        <>
+          <p className="text-2xl font-bold text-destructive">FAIL</p>
+          <p className="text-xs text-muted-foreground mt-1">Shadow execution failed</p>
+        </>
+      )
+    }
+    if (verification === 'static-analysis') {
+      return (
+        <>
+          <p className="text-2xl font-bold text-yellow-500">STATIC</p>
+          <p className="text-xs text-muted-foreground mt-1">Execution not verified</p>
+        </>
+      )
+    }
+    return (
+      <>
+        <p className="text-2xl font-bold text-muted-foreground">UNVERIFIED</p>
+        <p className="text-xs text-muted-foreground mt-1">Not verified for provider</p>
+      </>
+    )
+  }
+
   return (
     <div className="p-6 max-w-4xl">
       <h1 className="text-2xl font-bold flex items-center gap-2 mb-2">
         <FlaskConical className="h-6 w-6" /> Simulate Migration
       </h1>
       <p className="text-sm text-muted-foreground mb-6">
-        Dry-run a migration to see which statements would execute.
+        Preview migration SQL, identify destructive statements, and review executed shadow results
+        where supported.
       </p>
 
       <div className="mb-6">
@@ -68,14 +102,7 @@ export default function SimulatePage() {
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-lg border bg-card p-4 text-center">
-              <p
-                className={`text-2xl font-bold ${data.wouldSucceed ? 'text-emerald-500' : 'text-destructive'}`}
-              >
-                {data.wouldSucceed ? 'PASS' : 'FAIL'}
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Would {data.wouldSucceed ? 'succeed' : 'fail'}
-              </p>
+              {renderStatusBadge(data.verification, data.outcome)}
             </div>
             <div className="rounded-lg border bg-card p-4 text-center">
               <p className="text-2xl font-bold">{data.statements.length}</p>
@@ -90,10 +117,25 @@ export default function SimulatePage() {
               <p className="text-xs text-muted-foreground mt-1">Destructive</p>
             </div>
             <div className="rounded-lg border bg-card p-4 text-center">
-              <p className="text-xs font-mono text-muted-foreground">{data.mode}</p>
-              <p className="text-xs text-muted-foreground mt-1">Mode</p>
+              <p className="text-xs font-mono text-muted-foreground capitalize">
+                {data.verification}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Verification</p>
             </div>
           </div>
+
+          {data.verification === 'static-analysis' && (
+            <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/10 p-4 text-sm text-yellow-800 dark:text-yellow-300 flex items-start gap-2">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">Static Analysis Only</p>
+                <p className="text-xs mt-0.5">
+                  SQL statements were parsed for destructive patterns, but were not executed against
+                  a live or shadow database.
+                </p>
+              </div>
+            </div>
+          )}
 
           {data.warnings.length > 0 && (
             <div className="mb-4 rounded-lg border border-yellow-500/40 bg-yellow-500/10 p-4">

@@ -1,7 +1,6 @@
 /**
- * `prisma-flow simulate` — dry-run a migration without applying it.
- * Shows which statements would run, marks destructive ones, and exits
- * with code 2 if there are destructive operations (useful for CI).
+ * `prisma-flow simulate` — simulate or statically analyze a migration without modifying production data.
+ * Distinguishes executed verification (shadow DB) from static analysis (heuristics).
  */
 
 import path from 'node:path'
@@ -14,7 +13,7 @@ import { trackEvent } from '../core/telemetry.js'
 
 export function simulateCommand() {
   return new Command('simulate')
-    .description('Dry-run a migration to preview its effect without applying it')
+    .description('Dry-run a migration or perform static SQL analysis to preview changes')
     .argument('<migration>', 'Migration name or timestamp prefix')
     .option('--json', 'Output as JSON')
     .option('--fail-on-destructive', 'Exit with code 2 if destructive statements are found')
@@ -42,13 +41,12 @@ export function simulateCommand() {
 
           const sqlFile = path.join(project.migrationsPath, match.name, 'migration.sql')
 
-          // Use DB file path for SQLite shadow sim
           const dbPath =
             project.provider === 'sqlite' && project.databaseUrl
               ? (resolveSqliteFilePath(project.databaseUrl, project.schemaPath) ?? undefined)
               : undefined
 
-          const result = await simulate(match.name, sqlFile, dbPath)
+          const result = await simulate(match.name, sqlFile, dbPath, project.provider)
 
           if (options.json) {
             process.stdout.write(`${JSON.stringify(result, null, 2)}\n`)
@@ -56,14 +54,23 @@ export function simulateCommand() {
           }
 
           console.log()
-          console.log(chalk.bold.cyan(` 🔬  Simulation: ${match.name}`))
+          console.log(chalk.bold.cyan(` 🔬  Migration Simulation: ${match.name}`))
           console.log(chalk.dim('━'.repeat(60)))
-          console.log(`  ${chalk.bold('Mode:')}   ${result.mode}`)
+
+          let verificationLabel = chalk.yellow('Static analysis only — execution not verified')
+          if (result.verification === 'executed') {
+            verificationLabel =
+              result.outcome === 'success'
+                ? chalk.green('Executed successfully in shadow database')
+                : chalk.red('Executed with failure in shadow database')
+          } else if (result.verification === 'not-verified') {
+            verificationLabel = chalk.dim('Not verified for this provider')
+          }
+
+          console.log(`  ${chalk.bold('Verification:')} ${verificationLabel}`)
+          console.log(`  ${chalk.bold('Outcome:')}      ${result.outcome.toUpperCase()}`)
           console.log(
-            `  ${chalk.bold('Result:')} ${result.wouldSucceed ? chalk.green('Would succeed') : chalk.red('Would fail')}`,
-          )
-          console.log(
-            `  ${chalk.bold('Statements:')} ${result.statements.length} (${result.destructiveStatements} destructive)`,
+            `  ${chalk.bold('Statements:')}   ${result.statements.length} (${result.destructiveStatements} destructive)`,
           )
           console.log()
 
@@ -87,9 +94,9 @@ export function simulateCommand() {
             }
           }
 
-          if (!result.wouldSucceed && result.error) {
+          if (result.outcome === 'failure' && result.error) {
             console.log()
-            console.log(chalk.red(`  ✖  Error: ${result.error}`))
+            console.log(chalk.red(`  ✖  Execution Error: ${result.error}`))
           }
 
           console.log()
@@ -98,16 +105,18 @@ export function simulateCommand() {
             writeAuditEntry(
               cwd,
               'migration.simulate',
-              result.wouldSucceed ? 'success' : 'warning',
+              result.outcome === 'failure' ? 'failure' : 'success',
               {
                 migration: match.name,
+                verification: result.verification,
+                outcome: result.outcome,
                 destructive: result.destructiveStatements,
               },
             ),
             trackEvent('simulate', result.statements.length),
           ]).catch(() => {})
 
-          if (!result.wouldSucceed) process.exit(1)
+          if (result.outcome === 'failure') process.exit(1)
           if (options.failOnDestructive && result.destructiveStatements > 0) process.exit(2)
           process.exit(0)
         } catch (err: unknown) {
