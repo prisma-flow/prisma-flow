@@ -10,7 +10,7 @@ Security fixes target the latest released version and the current `main` branch.
 
 Please do not open public issues for suspected vulnerabilities. Use GitHub private vulnerability reporting:
 
-https://github.com/GitHackerz/prisma-flow/security/advisories/new
+https://github.com/prisma-flow/prisma-flow/security/advisories/new
 
 If private vulnerability reporting is not enabled yet, contact a maintainer privately and share only redacted details until a private channel is available.
 
