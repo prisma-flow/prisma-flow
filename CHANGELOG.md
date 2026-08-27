@@ -106,6 +106,6 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Authentication: was none → per-session random Bearer token on all API routes
 - Child processes: `exec` with template strings → `execFile` with explicit argument arrays
 
-[Unreleased]: https://github.com/GitHackerz/prisma-flow/compare/v0.1.1...HEAD
-[0.1.1]: https://github.com/GitHackerz/prisma-flow/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/GitHackerz/prisma-flow/releases/tag/v0.1.0
+[Unreleased]: https://github.com/prisma-flow/prisma-flow/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/prisma-flow/prisma-flow/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/prisma-flow/prisma-flow/releases/tag/v0.1.0
